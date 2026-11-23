@@ -2,6 +2,7 @@ import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core import checks
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 
 from tests.factories import create_channel, create_tracked_table
 from tests.testapp.models import Company, InsertOnlyItem, PlainItem
@@ -113,6 +114,19 @@ def test_database_checks_need_database_flag():
     create_channel(channel_type="carrier-pigeon")
     assert ids(run_checks()) == []
     assert ids(run_checks(databases=["default"])) == ["webhook_outbox.W010"]
+
+
+@pytest.mark.django_db
+def test_database_checks_load_only_the_columns_they_need():
+    from django.db import connection
+
+    create_channel(channel_type="carrier-pigeon")
+    create_tracked_table(PlainItem, "insert")
+    with CaptureQueriesContext(connection) as queries:
+        run_checks(databases=["default"])
+    selects = [q["sql"] for q in queries if "webhook_outbox_" in q["sql"]]
+    assert selects
+    assert not any('"config"' in sql or '"message_template"' in sql for sql in selects)
 
 
 @pytest.mark.django_db

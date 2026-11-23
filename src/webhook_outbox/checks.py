@@ -158,8 +158,11 @@ def check_database(app_configs=None, databases=None, **kwargs):
         if not _tables_exist(alias):
             continue
 
+        # Only the columns of 0001: the check also runs during ``migrate``,
+        # before later migrations add columns to these tables.
         unknown = (
             NotificationChannel.objects.using(alias)
+            .only("pk", "name", "channel_type")
             .exclude(channel_type__in=list(registry))
             .order_by("pk")
         )
@@ -177,6 +180,7 @@ def check_database(app_configs=None, databases=None, **kwargs):
 
         tracked_tables = (
             TrackedTable.objects.using(alias)
+            .only("pk", "name", "event_type", "content_type")
             .select_related("content_type")
             .order_by("pk")
         )
