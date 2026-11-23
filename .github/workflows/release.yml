@@ -1,0 +1,56 @@
+name: release
+
+# Publishing happens on a pushed tag X.Y.Z (numeric, no "v" prefix). The
+# version of the package comes from that tag (hatch-vcs).
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  build:
+    name: Build distributions
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Check the version matches the tag
+        run: |
+          test -f "dist/django_webhook_outbox-${GITHUB_REF_NAME}.tar.gz"
+          test -f "dist/django_webhook_outbox-${GITHUB_REF_NAME}-py3-none-any.whl"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/django-webhook-outbox/
+    permissions:
+      # Trusted Publishing (OIDC); no API token is used or stored.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

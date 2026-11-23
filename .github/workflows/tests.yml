@@ -1,0 +1,165 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_PYTHON_PREFERENCE: only-managed
+
+jobs:
+  lint:
+    name: Lint and migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv sync --locked --group dev
+      - name: ruff
+        run: uv run --no-sync ruff check .
+      - name: black
+        run: uv run --no-sync black --check .
+      - name: makemigrations --check
+        run: >-
+          uv run --no-sync python -m django makemigrations --check --dry-run
+          --settings=tests.settings --pythonpath=.
+
+  sqlite:
+    name: SQLite (Python 3.13, Django 5.2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          uv sync --locked --group dev
+          uv pip install "django~=5.2.0"
+      - name: Tests
+        run: uv run --no-sync pytest
+
+  postgres:
+    name: Postgres (Python ${{ matrix.python }}, Django ${{ matrix.django }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only combinations supported by Django itself.
+        include:
+          - { django: "4.2", python: "3.10" }
+          - { django: "4.2", python: "3.11" }
+          - { django: "4.2", python: "3.12" }
+          - { django: "5.0", python: "3.10" }
+          - { django: "5.0", python: "3.11" }
+          - { django: "5.0", python: "3.12" }
+          - { django: "5.2", python: "3.10" }
+          - { django: "5.2", python: "3.11" }
+          - { django: "5.2", python: "3.12" }
+          - { django: "5.2", python: "3.13" }
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: webhook_outbox
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_ENGINE: postgres
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: webhook_outbox
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          uv sync --locked --group dev --group postgres
+          uv pip install "django~=${{ matrix.django }}.0"
+      - name: Versions
+        run: uv run --no-sync python -c "import django, httpx, sys; print(sys.version); print('Django', django.__version__, 'httpx', httpx.__version__)"
+      - name: Tests
+        run: uv run --no-sync pytest
+
+  without-celery:
+    name: Without Celery installed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          uv sync --locked --group dev
+          uv pip uninstall celery
+      - name: Tests (Celery tests are skipped)
+        run: uv run --no-sync pytest
+
+  oldest-httpx:
+    name: httpx 0.27
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          uv sync --locked --group dev
+          uv pip install "httpx~=0.27.0"
+      - name: Tests
+        run: uv run --no-sync pytest
+
+  build:
+    name: Build sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: uv build
+      - name: Check the wheel content
+        run: |
+          python3 - <<'PY'
+          import glob, zipfile
+          (wheel,) = glob.glob("dist/*.whl")
+          names = set(zipfile.ZipFile(wheel).namelist())
+          for required in (
+              "webhook_outbox/migrations/0001_initial.py",
+              "webhook_outbox/locale/ru/LC_MESSAGES/django.mo",
+              "webhook_outbox/locale/ru/LC_MESSAGES/django.po",
+              "webhook_outbox/py.typed",
+              "webhook_outbox/contrib/celery/tasks.py",
+          ):
+              assert required in names, f"{required} missing from {wheel}"
+          assert not any(n.startswith("tests/") for n in names), "tests leaked into the wheel"
+          print(wheel, "OK")
+          PY
