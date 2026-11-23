@@ -60,6 +60,47 @@ def test_admin_retry_hook_must_be_callable(hook):
 
 
 @override_settings(WEBHOOK_OUTBOX={"ADMIN_RETRY_HOOK": "tests.channels.retry_hook"})
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("DEDUP_WINDOW_SECONDS", "300"),
+        ("DEDUP_WINDOW_SECONDS", -1),
+        ("DEDUP_WINDOW_SECONDS", 1.5),
+        ("MAX_RETRIES", "3"),
+        ("MAX_RETRIES", 0),
+        ("MAX_RETRIES", True),
+        ("DELIVERY_BATCH_SIZE", -5),
+        ("WEBHOOK_TIMEOUT", "30"),
+        ("WEBHOOK_TIMEOUT", 0),
+        ("POLL_INTERVAL", None),
+        ("SEND_INTERVAL", -1),
+    ],
+)
+def test_numeric_settings_are_validated(key, value):
+    with override_settings(WEBHOOK_OUTBOX={key: value}):
+        assert ids(run_checks()) == ["webhook_outbox.E006"]
+
+
+@pytest.mark.parametrize(
+    "name", ["NOTIFICATION_MAX_RETRIES", "NOTIFICATION_WEBHOOK_TIMEOUT"]
+)
+def test_numeric_legacy_settings_are_validated(name):
+    with override_settings(**{name: "3"}):
+        assert ids(run_checks()) == ["webhook_outbox.E006"]
+
+
+@override_settings(
+    WEBHOOK_OUTBOX={
+        "MAX_RETRIES": 5,
+        "DEDUP_WINDOW_SECONDS": 0,
+        "WEBHOOK_TIMEOUT": 2.5,
+        "POLL_INTERVAL": 0.5,
+    }
+)
+def test_valid_numeric_settings():
+    assert ids(run_checks()) == []
+
+
 def test_admin_retry_hook_ok():
     assert ids(run_checks()) == []
 

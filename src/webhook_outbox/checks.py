@@ -9,6 +9,7 @@ Configuration checks (always run):
 * webhook_outbox.E003 - a CHANNELS entry is not a loadable BaseChannel subclass
 * webhook_outbox.E004 - TRACKABLE_EXCLUDE_APPS is not a list of strings
 * webhook_outbox.E005 - ADMIN_RETRY_HOOK is not an importable callable
+* webhook_outbox.E006 - a numeric setting has the wrong type or is out of range
 
 Database checks (``manage.py check --database default``, and ``migrate``).
 They only warn: a stale row must not block deployments.
@@ -28,6 +29,16 @@ from django.utils.module_loading import import_string
 from .conf import DEFAULTS, SETTING_NAME, get_channel_paths, get_setting
 
 SELF_APP_LABEL = "webhook_outbox"
+
+# setting -> (type, smallest allowed value, description)
+NUMERIC_SETTINGS = {
+    "MAX_RETRIES": (int, 1, "an integer >= 1"),
+    "DELIVERY_BATCH_SIZE": (int, 1, "an integer >= 1"),
+    "DEDUP_WINDOW_SECONDS": (int, 0, "an integer >= 0"),
+    "WEBHOOK_TIMEOUT": ((int, float), 0, "a number > 0"),
+    "POLL_INTERVAL": ((int, float), 0, "a number > 0"),
+    "SEND_INTERVAL": ((int, float), 0, "a number > 0"),
+}
 
 
 @register()
@@ -102,6 +113,22 @@ def check_settings(app_configs=None, **kwargs):
                     f"{SETTING_NAME}['ADMIN_RETRY_HOOK'] {hook!r} is not an "
                     f"importable callable ({e}).",
                     id="webhook_outbox.E005",
+                )
+            )
+
+    for name, (types, minimum, description) in NUMERIC_SETTINGS.items():
+        value = get_setting(name)
+        valid = (
+            isinstance(value, types)
+            and not isinstance(value, bool)
+            and (value >= minimum if types is int else value > minimum)
+        )
+        if not valid:
+            errors.append(
+                Error(
+                    f"{SETTING_NAME}[{name!r}] must be {description}, "
+                    f"got {value!r}.",
+                    id="webhook_outbox.E006",
                 )
             )
 
