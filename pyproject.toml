@@ -1,0 +1,118 @@
+[build-system]
+requires = ["hatchling>=1.26", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "django-webhook-outbox"
+dynamic = ["version"]
+description = "Outgoing webhooks for Django models: timestamp polling, a transactional outbox and retrying delivery."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "OmniChem" }]
+keywords = ["django", "webhook", "webhooks", "outbox", "notifications", "polling"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Natural Language :: Russian",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "Django>=4.2,<6",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+celery = ["celery>=5.3"]
+
+[project.urls]
+Homepage = "https://github.com/omnichem/django-webhook-outbox"
+Documentation = "https://github.com/omnichem/django-webhook-outbox/tree/master/docs"
+Changelog = "https://github.com/omnichem/django-webhook-outbox/blob/master/CHANGELOG.md"
+Issues = "https://github.com/omnichem/django-webhook-outbox/issues"
+Source = "https://github.com/omnichem/django-webhook-outbox"
+
+[dependency-groups]
+dev = [
+    "black>=24.8",
+    "celery>=5.3",
+    "pytest>=8.0",
+    "pytest-django>=4.8",
+    "ruff>=0.6",
+    "time-machine>=2.13",
+]
+postgres = ["psycopg[binary]>=3.1.8"]
+
+# --- build -----------------------------------------------------------------
+
+[tool.hatch.version]
+source = "vcs"
+# Releases are tagged as plain numeric X.Y.Z (no "v" prefix).
+tag-pattern = '^(?P<version>\d+\.\d+\.\d+)$'
+fallback-version = "0.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/webhook_outbox"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+    "/LICENSE",
+]
+
+# --- tests -----------------------------------------------------------------
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = ["error::RuntimeWarning"]
+
+# --- lint ------------------------------------------------------------------
+
+[tool.black]
+line-length = 88
+target-version = ["py310", "py311", "py312", "py313"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ", "C4", "SIM"]
+ignore = [
+    "E501",  # line length is black's job
+    "UP031", # ported log/format strings are kept verbatim
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/webhook_outbox/migrations/*" = ["E", "I"]
+"tests/testapp/migrations/*" = ["E", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["webhook_outbox"]
