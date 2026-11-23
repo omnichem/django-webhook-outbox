@@ -18,6 +18,7 @@ A channel is a `NotificationChannel` row: a `channel_type` and a JSON
 | `url` | yes | Absolute `http://` or `https://` URL. Other schemes and relative URLs are rejected. |
 | `headers` | no | A flat object whose keys and values are all strings. Sent with every request. |
 | `timeout` | no | A positive number of seconds. Default: `WEBHOOK_TIMEOUT` (30). |
+| `envelope_version` | no | `1` or `2` (1.1+). Default: `ENVELOPE_VERSION` (1). See [envelope.md](envelope.md). |
 
 The request is an HTTP `POST` with the [envelope](envelope.md) as JSON,
 made with `httpx.Client(timeout=...)`. Redirects are not followed and TLS
@@ -80,7 +81,12 @@ class SlackChannel(BaseChannel):
 
 `NotificationPayload` is a frozen dataclass with `message`, `event_type`,
 `source_model`, `source_pk`, `tracked_table` and `occurred_at` (a datetime).
-`payload.as_dict()` is the v1 envelope.
+Since 1.1 it also has `event_id`, `changes`, `extra` and `source_changed_at`
+(all optional). `payload.as_dict()` is the envelope of
+`WEBHOOK_OUTBOX["ENVELOPE_VERSION"]` (v1 by default). `as_dict(2)`,
+`as_v1_dict()` and `as_v2_dict()` pick one explicitly, and
+`get_envelope_version(channel)` reads a channel's `"envelope_version"` the
+way `WebhookChannel` does.
 
 How the dispatcher (`webhook_outbox.services.channels.dispatch`) treats a
 channel:

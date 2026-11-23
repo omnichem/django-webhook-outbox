@@ -171,8 +171,25 @@ class NotificationOutboxModelTest(TestCase):
         self.assertIn("pending", result)
 
 
+# Columns added in 1.1 (migration 0002). They must all be nullable, so rows
+# written by 1.0 stay valid and the migration is a plain ADD COLUMN.
+COLUMNS_1_1 = {
+    TrackedTable: ["dedup_window_seconds"],
+    NotificationOutbox: ["event_id", "source_changed_at", "changes", "extra"],
+}
+
+
 class SchemaTest(TestCase):
-    """The schema the 1.0 migration ships (equal to the original final schema)."""
+    """The 1.0 schema (equal to the original final schema) plus the 1.1 columns."""
+
+    def test_1_1_columns_are_nullable(self):
+        for model, names in COLUMNS_1_1.items():
+            for name in names:
+                with self.subTest(model=model.__name__, field=name):
+                    self.assertTrue(model._meta.get_field(name).null)
+
+    def test_event_types(self):
+        self.assertEqual(TrackedTable.EventType.values, ["insert", "update", "delete"])
 
     def test_unique_together(self):
         self.assertEqual(
@@ -225,6 +242,7 @@ class SchemaTest(TestCase):
                 "channel",
                 "last_polled_at",
                 "is_active",
+                "dedup_window_seconds",
             ],
         )
         self.assertEqual(
@@ -242,5 +260,9 @@ class SchemaTest(TestCase):
                 "error_message",
                 "sent_at",
                 "retry_count",
+                "event_id",
+                "source_changed_at",
+                "changes",
+                "extra",
             ],
         )

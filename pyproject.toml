@@ -54,6 +54,7 @@ Source = "https://github.com/omnichem/django-webhook-outbox"
 dev = [
     "black>=24.8",
     "celery>=5.3",
+    "jsonschema>=4.18",
     "pytest>=8.0",
     "pytest-django>=4.8",
     "ruff>=0.6",

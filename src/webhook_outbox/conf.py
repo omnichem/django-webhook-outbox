@@ -56,6 +56,23 @@ DEFAULTS: dict[str, Any] = {
     # Dotted path to a callable(outbox_id) called by the admin "retry" action
     # after an entry was reset to pending, e.g. to push it right away.
     "ADMIN_RETRY_HOOK": None,
+    # --- 1.1 ---------------------------------------------------------------
+    # The poll cursor trails "now" by this many seconds, so a row committed up
+    # to this long after its created_at/updated_at is still seen (the overlap
+    # is de-duplicated exactly). 0 = the 1.0 cursor (late commits are missed).
+    "POLL_OVERLAP_SECONDS": 60,
+    # Envelope POSTed by the webhook channel: 1 (the 1.0 document) or 2. A
+    # channel can override it with "envelope_version" in its config.
+    "ENVELOPE_VERSION": 1,
+    # Add "event_id" as a seventh key to envelope v1 (v2 always has it).
+    "ENVELOPE_V1_EVENT_ID": False,
+    # Models whose post_save/post_delete signals queue events, e.g.
+    # ["shop.order"] or {"shop.order": {"fields": ["status"]}} ("fields":
+    # whose old/new values go to "changes" on update). Empty = off.
+    "SIGNAL_CAPTURE": {},
+    # Dotted path to a callable(outbox_id) called on commit of the
+    # transaction in which enqueue() (or signal capture) queued an entry.
+    "ENQUEUE_HOOK": None,
 }
 
 LEGACY_SETTINGS: dict[str, str] = {

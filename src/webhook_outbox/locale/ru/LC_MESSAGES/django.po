@@ -115,10 +115,12 @@ msgstr "Повторить отправку выбранных неотправ�
 
 msgid ""
 "Select the model to track and the event type. INSERT: notifies on new "
-"records. UPDATE: notifies on any change to existing records."
+"records. UPDATE: notifies on any change to existing records. DELETE: not "
+"polled; fed by signal capture or enqueue()."
 msgstr ""
 "Выберите модель и тип события. INSERT: уведомление о новых записях. UPDATE: "
-"уведомление о любом изменении существующих записей."
+"уведомление о любом изменении существующих записей. DELETE: не опрашивается; "
+"события поступают от перехвата сигналов или enqueue()."
 
 msgid "Sent"
 msgstr "Отправлено"
@@ -186,3 +188,54 @@ msgstr ""
 "Вебхук: {\"url\": \"https://example.com/hooks/outbox\", \"headers\": "
 "{\"Authorization\": \"Bearer ...\"}, \"timeout\": 30}. Обязателен только url;"
 " заголовки нужны для авторизации исходящего запроса."
+
+msgctxt "event type"
+msgid "Delete"
+msgstr "Удаление"
+
+msgid "Dedup window (seconds)"
+msgstr "Окно дедупликации (секунды)"
+
+msgid ""
+"Overrides WEBHOOK_OUTBOX['DEDUP_WINDOW_SECONDS'] for this rule; 0 disables "
+"the window. Leave empty to use the setting."
+msgstr ""
+"Заменяет WEBHOOK_OUTBOX['DEDUP_WINDOW_SECONDS'] для этого правила; 0 "
+"отключает окно. Оставьте пустым, чтобы использовать настройку."
+
+msgid "Event ID"
+msgstr "ID события"
+
+msgid ""
+"Unique id of the event, stable across retries. Rows queued before 1.1 get "
+"one on their first delivery attempt."
+msgstr ""
+"Уникальный идентификатор события, не меняется при повторных отправках. "
+"Записи, созданные до 1.1, получают его при первой попытке отправки."
+
+msgid "Source changed at"
+msgstr "Время изменения источника"
+
+msgid ""
+"Timestamp of the source row the event was built from (created_at for "
+"insert, updated_at for update). Used to recognise a change that is already "
+"queued."
+msgstr ""
+"Метка времени исходной записи, по которой создано событие (created_at для "
+"вставки, updated_at для изменения). Позволяет узнать изменение, которое уже "
+"в очереди."
+
+msgid "Changes"
+msgstr "Изменения"
+
+msgid "Old and new values: {\"field\": {\"old\": ..., \"new\": ...}}"
+msgstr "Старые и новые значения: {\"field\": {\"old\": ..., \"new\": ...}}"
+
+msgid "Extra data"
+msgstr "Дополнительные данные"
+
+msgid "Data supplied by the producer of the event"
+msgstr "Данные, переданные источником события"
+
+msgid "Event"
+msgstr "Событие"

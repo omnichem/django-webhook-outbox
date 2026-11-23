@@ -1,10 +1,14 @@
 """
-Tracking semantics of 1.0, pinned with a frozen clock.
+Tracking semantics, pinned with a frozen clock.
 
-Several tests here pin *limitations* of the original implementation that
-1.0 deliberately keeps (docs/semantics.md, "Known limitations"). They are
-named ``test_limitation_*``: if one starts failing, behaviour changed and
-the docs and changelog must say so.
+Several tests here pin *limitations* of the original implementation that are
+still there (docs/semantics.md, "Known limitations"). They are named
+``test_limitation_*``: if one starts failing, behaviour changed and the docs
+and changelog must say so. Limitations fixed in 1.1 (lost events, late
+commits, two pollers) are pinned by ``test_fixed_*`` tests instead.
+
+The default POLL_OVERLAP_SECONDS is 60: the cursor trails the poll time by a
+minute. Tests that pin the 1.0 cursor use ``NO_OVERLAP``.
 """
 
 from datetime import datetime, timedelta
@@ -37,6 +41,8 @@ from webhook_outbox.services.template import render_template
 pytestmark = pytest.mark.django_db
 
 T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=dt_timezone.utc)
+
+NO_OVERLAP = override_settings(WEBHOOK_OUTBOX={"POLL_OVERLAP_SECONDS": 0})
 
 
 def at(seconds: float):
@@ -75,6 +81,24 @@ def test_first_poll_sets_cursor_without_backfill():
         assert poll_table(tracked) == 1
 
     assert [e.message for e in entries()] == ["New one"]
+    # The cursor trails the poll by POLL_OVERLAP_SECONDS (60) and never moves
+    # backwards: it stays at T0 for the first minute.
+    assert reload(tracked).last_polled_at == T0
+    with at(100):
+        assert poll_table(tracked) == 0
+    assert reload(tracked).last_polled_at == T0 + timedelta(seconds=40)
+    assert len(entries()) == 1
+
+
+@NO_OVERLAP
+def test_first_poll_without_overlap_moves_cursor_to_poll_time():
+    tracked = create_tracked_table(Company, message_template="{company_name}")
+    with at(0):
+        poll_table(tracked)
+    with at(5):
+        create_company("New one")
+    with at(10):
+        assert poll_table(tracked) == 1
     assert reload(tracked).last_polled_at == T0 + timedelta(seconds=10)
 
 
@@ -289,60 +313,275 @@ def test_limitation_dedup_suppresses_a_legitimate_second_update():
     assert len(entries()) == 1
 
 
-@override_settings(WEBHOOK_OUTBOX={"DEDUP_WINDOW_SECONDS": 0})
-def test_limitation_no_locking_two_pollers_duplicate():
-    """Two pollers that read the same cursor both queue the same change."""
+@pytest.mark.parametrize("overlap", [0, 60])
+def test_fixed_two_pollers_with_a_stale_cursor_do_not_duplicate(overlap):
+    """
+    1.0 queued the change twice. Now the cursor is re-read under a row lock
+    and the change is recognised by its row timestamp, even with the dedup
+    window off.
+    """
+    settings = {"DEDUP_WINDOW_SECONDS": 0, "POLL_OVERLAP_SECONDS": overlap}
+    with override_settings(WEBHOOK_OUTBOX=settings):
+        tracked = create_tracked_table(Company)
+        with at(0):
+            poll_table(tracked)
+        with at(1):
+            create_company("Once")
+
+        other_poller = TrackedTable.objects.get(pk=tracked.pk)  # same cursor
+        with at(2):
+            assert poll_table(tracked) == 1
+        with at(3):
+            assert poll_table(other_poller) == 0
+
+    assert len(entries()) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_poll_locks_the_tracked_table_row():
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    if not connection.features.has_select_for_update:
+        pytest.skip("the database has no SELECT ... FOR UPDATE")
     tracked = create_tracked_table(Company)
-    with at(0):
+    with CaptureQueriesContext(connection) as queries:
         poll_table(tracked)
-    with at(1):
-        create_company("Twice")
-
-    other_poller = TrackedTable.objects.get(pk=tracked.pk)  # same cursor
-    with at(2):
-        assert poll_table(tracked) == 1
-    with at(3):
-        assert poll_table(other_poller) == 1
-
-    assert len(entries()) == 2
+    table = TrackedTable._meta.db_table
+    assert any(
+        ("FOR UPDATE" in q["sql"] or "FOR NO KEY UPDATE" in q["sql"])
+        and table in q["sql"]
+        for q in queries.captured_queries
+    )
 
 
 # --- cursor / transactions ----------------------------------------------------
 
 
-def test_limitation_cursor_advanced_before_outbox_insert():
+@pytest.mark.parametrize("overlap", [0, 60])
+def test_fixed_failed_outbox_insert_keeps_cursor_and_next_poll_emits(overlap):
+    """1.0 moved the cursor first: an insert that failed lost the event."""
+    with override_settings(WEBHOOK_OUTBOX={"POLL_OVERLAP_SECONDS": overlap}):
+        tracked = create_tracked_table(Company)
+        with at(0):
+            poll_table(tracked)
+        with at(1):
+            create_company("Not lost")
+
+        with (
+            at(200),
+            patch.object(
+                NotificationOutbox.objects,
+                "create",
+                side_effect=RuntimeError("db hiccup"),
+            ),
+        ):
+            assert poll_table(tracked) == 0
+        assert reload(tracked).last_polled_at == T0
+        assert entries() == []
+
+        with at(201):
+            assert poll_table(tracked) == 1
+        assert [e.source_pk for e in entries()] == [str(Company.objects.get().pk)]
+        assert reload(tracked).last_polled_at == T0 + timedelta(seconds=201 - overlap)
+
+
+def test_insert_is_queued_before_update_of_the_same_row():
+    channel = create_channel()
+    # The UPDATE rule is created first: ordering must not depend on that.
+    update_rule = create_tracked_table(Company, "update", channel=channel)
+    insert_rule = create_tracked_table(Company, "insert", channel=channel)
+    with at(0):
+        poll_all_tables()
+    with at(1):
+        company = create_company("Both")
+    with at(5):
+        company.company_name = "Renamed"
+        company.save()
+
+    with at(200):
+        assert poll_all_tables() == 2
+
+    assert [e.tracked_table for e in entries()] == [insert_rule, update_rule]
+
+
+def test_fixed_error_during_detection_rolls_back_cursor():
     tracked = create_tracked_table(Company)
     with at(0):
         poll_table(tracked)
     with at(1):
-        create_company("Lost")
+        create_company("Still there")
+    with (
+        at(200),
+        patch(
+            "webhook_outbox.services.poller.TablePoller.detect",
+            side_effect=RuntimeError("query failed"),
+        ),
+        pytest.raises(RuntimeError),
+    ):
+        poll_table(tracked)
+    assert reload(tracked).last_polled_at == T0
+    with at(201):
+        assert poll_table(tracked) == 1
+
+
+def test_fixed_one_failed_row_keeps_cursor_other_rows_are_queued_once():
+    tracked = create_tracked_table(
+        Company,
+        message_template="{company_name}",
+        dedup_window_seconds=0,
+    )
+    with at(0):
+        poll_table(tracked)
+    with at(1):
+        create_company("One")
+        create_company("Two")
+
+    def flaky(template, instance):
+        if instance.company_name == "One":
+            raise RuntimeError("boom")
+        return render_template(template, instance)
 
     with (
-        at(2),
-        patch.object(
-            NotificationOutbox.objects, "create", side_effect=RuntimeError("db hiccup")
-        ),
+        at(200),
+        patch("webhook_outbox.services.poller.render_template", side_effect=flaky),
     ):
+        assert poll_table(tracked) == 1
+    assert reload(tracked).last_polled_at == T0
+
+    # "Two" is re-read but recognised by its created_at; "One" is retried.
+    with at(201):
+        assert poll_table(tracked) == 1
+    assert sorted(e.message for e in entries()) == ["One", "Two"]
+
+
+@override_settings(WEBHOOK_OUTBOX={"DEDUP_WINDOW_SECONDS": 0})
+def test_fixed_late_commit_is_emitted_exactly_once():
+    """
+    A row saved at t=5 in a transaction that commits after the poll at t=10:
+    its created_at is older than that poll. The cursor trails the polls by
+    POLL_OVERLAP_SECONDS, so a later poll still sees the row, and the overlap
+    re-reads do not queue it again (exact dedup, dedup window off).
+    """
+    tracked = create_tracked_table(Company)
+    with at(0):
+        poll_table(tracked)
+    with at(10):
         assert poll_table(tracked) == 0
-    assert reload(tracked).last_polled_at == T0 + timedelta(seconds=2)
+    # Simulates a transaction that started at t=5 and committed after the t=10 poll.
+    with at(5):
+        create_company("Committed late")
 
-    with at(3):
+    queued = []
+    for second in (20, 30, 40, 50, 60, 70, 80, 120):
+        with at(second):
+            queued.append(poll_table(tracked))
+
+    assert queued == [1, 0, 0, 0, 0, 0, 0, 0]
+    assert len(entries()) == 1
+    # The cursor has moved past the row: it is not read again.
+    assert reload(tracked).last_polled_at == T0 + timedelta(seconds=60)
+
+
+def test_fixed_late_commit_of_an_update_is_emitted():
+    tracked = create_tracked_table(Company, "update", dedup_window_seconds=0)
+    with at(-100):
+        company = create_company("Old row")
+    with at(0):
+        poll_table(tracked)
+    with at(10):
+        poll_table(tracked)
+    with at(5):  # updated at t=5, committed after the t=10 poll
+        company.company_name = "Updated late"
+        company.save()
+    with at(20):
+        assert poll_table(tracked) == 1
+    with at(30):
         assert poll_table(tracked) == 0
-    assert entries() == []
+    assert len(entries()) == 1
 
 
-def test_limitation_late_commit_is_missed():
-    """A row whose created_at is older than the cursor when it becomes visible."""
+def test_limitation_commit_later_than_the_overlap_is_missed():
+    tracked = create_tracked_table(Company)
+    with at(0):
+        poll_table(tracked)
+    with at(100):
+        poll_table(tracked)  # cursor: t=40
+    with at(39):  # committed after the t=100 poll, 61 s after its created_at
+        create_company("Committed too late")
+    with at(130):
+        assert poll_table(tracked) == 0
+
+
+@NO_OVERLAP
+def test_limitation_late_commit_is_missed_without_overlap():
+    """POLL_OVERLAP_SECONDS = 0 restores the 1.0 cursor and its race."""
     tracked = create_tracked_table(Company)
     with at(0):
         poll_table(tracked)
     with at(10):
         poll_table(tracked)
-    # Simulates a transaction that started at t=5 and committed after the t=10 poll.
     with at(5):
         create_company("Committed late")
     with at(20):
         assert poll_table(tracked) == 0
+
+
+def test_update_shortly_after_insert_is_reported_with_overlap():
+    """
+    With a trailing cursor, a row created after the cursor is reported as
+    updated once updated_at is more than a second after created_at.
+    """
+    channel = create_channel()
+    insert = create_tracked_table(Company, "insert", channel=channel)
+    update = create_tracked_table(Company, "update", channel=channel)
+    with at(0):
+        poll_all_tables()
+    with at(1):
+        company = create_company("New")
+    with at(2):
+        assert poll_all_tables() == 1
+    # Re-reading the overlap does not report the creation as an update.
+    with at(3):
+        assert poll_all_tables() == 0
+    with at(4):
+        company.save()
+    with at(5):
+        assert poll_all_tables() == 1
+    with at(6):
+        assert poll_all_tables() == 0
+    assert len(entries(insert)) == len(entries(update)) == 1
+
+
+def test_limitation_update_within_a_second_of_creation_collapses():
+    channel = create_channel()
+    insert = create_tracked_table(Company, "insert", channel=channel)
+    update = create_tracked_table(Company, "update", channel=channel)
+    with at(0):
+        poll_all_tables()
+    with at(1):
+        company = create_company("New")
+    with at(1.5):
+        assert poll_all_tables() == 1
+    with at(1.9):
+        company.save()
+    with at(10):
+        assert poll_all_tables() == 0
+    assert len(entries(insert)) == 1
+    assert entries(update) == []
+
+
+def test_dedup_window_per_tracked_table():
+    tracked = create_tracked_table(Company, "update", dedup_window_seconds=0)
+    with at(-10):
+        company = create_company("Per table")
+    with at(0):
+        poll_table(tracked)
+
+    _updates_polled_at(tracked, company, [30, 90])
+
+    # The table's own window (0) overrides the 300 s default.
+    assert len(entries()) == 2
 
 
 def test_render_error_does_not_stop_other_rows():
@@ -364,6 +603,7 @@ def test_render_error_does_not_stop_other_rows():
     ):
         assert poll_table(tracked) == 1
     assert [e.message for e in entries()] == ["Two"]
+    assert reload(tracked).last_polled_at == T0  # retried by the next poll
 
 
 # --- models: managers and timestamps ------------------------------------------
@@ -380,6 +620,7 @@ def test_default_manager_filters_rows_soft_delete():
         assert poll_table(tracked) == 1
 
 
+@NO_OVERLAP
 def test_model_without_objects_manager_fails_in_isolation():
     channel = create_channel()
     broken = create_tracked_table(CustomManagerItem, channel=channel)

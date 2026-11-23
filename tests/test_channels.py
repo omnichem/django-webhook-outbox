@@ -87,6 +87,24 @@ class WebhookChannelValidationTest(SimpleTestCase):
         self.assertEqual(channel.headers, {"Authorization": "Bearer secret"})
         self.assertEqual(channel.timeout, 5)
 
+    def test_envelope_version(self):
+        for version in (1, 2):
+            channel = WebhookChannel(
+                {"url": "https://example.com/hook", "envelope_version": version}
+            )
+            self.assertEqual(channel.envelope_version, version)
+        self.assertIsNone(
+            WebhookChannel({"url": "https://example.com/hook"}).envelope_version
+        )
+
+    def test_rejects_unknown_envelope_version(self):
+        for version in (0, 3, "2", True):
+            with self.subTest(version=version), self.assertRaises(ValueError) as ctx:
+                WebhookChannel(
+                    {"url": "https://example.com/hook", "envelope_version": version}
+                )
+            self.assertIn("envelope_version", str(ctx.exception))
+
     @override_settings(NOTIFICATION_WEBHOOK_TIMEOUT=17)
     def test_timeout_falls_back_to_setting(self):
         """Without an explicit timeout the global setting applies."""

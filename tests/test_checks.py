@@ -75,6 +75,9 @@ def test_admin_retry_hook_must_be_callable(hook):
         ("WEBHOOK_TIMEOUT", 0),
         ("POLL_INTERVAL", None),
         ("SEND_INTERVAL", -1),
+        ("POLL_OVERLAP_SECONDS", -1),
+        ("POLL_OVERLAP_SECONDS", "60"),
+        ("POLL_OVERLAP_SECONDS", 1.5),
     ],
 )
 def test_numeric_settings_are_validated(key, value):
@@ -99,6 +102,42 @@ def test_numeric_legacy_settings_are_validated(name):
     }
 )
 def test_valid_numeric_settings():
+    assert ids(run_checks()) == []
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"ENVELOPE_VERSION": 3},
+        {"ENVELOPE_VERSION": "2"},
+        {"ENVELOPE_VERSION": True},
+        {"ENVELOPE_V1_EVENT_ID": "yes"},
+    ],
+)
+def test_envelope_settings_are_validated(settings):
+    with override_settings(WEBHOOK_OUTBOX=settings):
+        assert ids(run_checks()) == ["webhook_outbox.E007"]
+
+
+@override_settings(
+    WEBHOOK_OUTBOX={
+        "ENVELOPE_VERSION": 2,
+        "ENVELOPE_V1_EVENT_ID": True,
+        "POLL_OVERLAP_SECONDS": 0,
+    }
+)
+def test_valid_1_1_settings():
+    assert ids(run_checks()) == []
+
+
+@pytest.mark.parametrize("hook", ["tests.channels.nope", "tests.channels.SENT"])
+def test_enqueue_hook_must_be_callable(hook):
+    with override_settings(WEBHOOK_OUTBOX={"ENQUEUE_HOOK": hook}):
+        assert ids(run_checks()) == ["webhook_outbox.E005"]
+
+
+@override_settings(WEBHOOK_OUTBOX={"ENQUEUE_HOOK": "tests.channels.enqueue_hook"})
+def test_enqueue_hook_ok():
     assert ids(run_checks()) == []
 
 
@@ -145,6 +184,7 @@ def test_missing_timestamp_fields():
     create_tracked_table(InsertOnlyItem, "update", channel=channel)
     create_tracked_table(InsertOnlyItem, "insert", channel=channel)  # fine
     create_tracked_table(Company, "update", channel=channel)  # fine
+    create_tracked_table(PlainItem, "delete", channel=channel)  # not polled: fine
 
     assert ids(run_checks(databases=["default"])) == [
         "webhook_outbox.W012",

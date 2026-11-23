@@ -16,6 +16,11 @@ def test_defaults():
         "CHANNELS": {},
         "TRACKABLE_EXCLUDE_APPS": [],
         "ADMIN_RETRY_HOOK": None,
+        "POLL_OVERLAP_SECONDS": 60,
+        "ENVELOPE_VERSION": 1,
+        "ENVELOPE_V1_EVENT_ID": False,
+        "SIGNAL_CAPTURE": {},
+        "ENQUEUE_HOOK": None,
     }
     for key, value in DEFAULTS.items():
         assert get_setting(key) == value

@@ -1,6 +1,10 @@
+import uuid
+
 from django.contrib.contenttypes.models import ContentType
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
 
 
 class TimeStampedModel(models.Model):
@@ -69,6 +73,9 @@ class TrackedTable(TimeStampedModel):
     class EventType(models.TextChoices):
         INSERT = "insert", _("Insert")
         UPDATE = "update", _("Update")
+        # Not polled: produced by signal capture or enqueue() only.
+        # Context: the bare "Delete" is the admin's delete button label.
+        DELETE = "delete", pgettext_lazy("event type", "Delete")
 
     name = models.CharField(
         max_length=100,
@@ -117,6 +124,16 @@ class TrackedTable(TimeStampedModel):
     is_active = models.BooleanField(
         default=True,
         verbose_name=_("Active"),
+    )
+
+    dedup_window_seconds = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name=_("Dedup window (seconds)"),
+        help_text=_(
+            "Overrides WEBHOOK_OUTBOX['DEDUP_WINDOW_SECONDS'] for this rule; "
+            "0 disables the window. Leave empty to use the setting."
+        ),
     )
 
     class Meta:
@@ -216,6 +233,47 @@ class NotificationOutbox(TimeStampedModel):
     retry_count = models.PositiveIntegerField(
         default=0,
         verbose_name=_("Retry Count"),
+    )
+
+    # --- added in 1.1 (all nullable: rows written by 1.0 keep NULL) ---------
+
+    event_id = models.UUIDField(
+        null=True,
+        blank=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name=_("Event ID"),
+        help_text=_(
+            "Unique id of the event, stable across retries. Rows queued before "
+            "1.1 get one on their first delivery attempt."
+        ),
+    )
+
+    source_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name=_("Source changed at"),
+        help_text=_(
+            "Timestamp of the source row the event was built from (created_at "
+            "for insert, updated_at for update). Used to recognise a change "
+            "that is already queued."
+        ),
+    )
+
+    changes = models.JSONField(
+        null=True,
+        blank=True,
+        encoder=DjangoJSONEncoder,
+        verbose_name=_("Changes"),
+        help_text=_('Old and new values: {"field": {"old": ..., "new": ...}}'),
+    )
+
+    extra = models.JSONField(
+        null=True,
+        blank=True,
+        encoder=DjangoJSONEncoder,
+        verbose_name=_("Extra data"),
+        help_text=_("Data supplied by the producer of the event"),
     )
 
     class Meta:
