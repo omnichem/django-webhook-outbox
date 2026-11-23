@@ -51,10 +51,12 @@ def create_organization_type(name="LLC") -> OrganizationType:
     return OrganizationType.objects.create(name=name)
 
 
-def create_company(name="Test Company", inn="1234567890", **fields) -> Company:
+def create_company(
+    name="Test Company", registration_number="1234567890", **fields
+) -> Company:
     values = {
         "company_name": name,
-        "inn": inn,
+        "registration_number": registration_number,
         "company_type": fields.pop("company_type", None) or create_organization_type(),
         "address": "123 Test St",
     }

@@ -25,7 +25,7 @@ class OrganizationType(TimeStampedModel):
 
 class Company(TimeStampedModel):
     company_name = models.CharField(max_length=200)
-    inn = models.CharField(max_length=12)
+    registration_number = models.CharField(max_length=12)
     company_type = models.ForeignKey(
         OrganizationType, null=True, blank=True, on_delete=models.SET_NULL
     )

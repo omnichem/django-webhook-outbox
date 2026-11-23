@@ -208,7 +208,7 @@ class PollTableTest(TestCase):
             name="Test",
             content_type=self.request_ct,
             event_type=TrackedTable.EventType.INSERT,
-            message_template="Registration request for {company.company_name} (INN: {company.inn})",
+            message_template="Registration request for {company.company_name} (No. {company.registration_number})",
             channel=self.channel,
             last_polled_at=past,
         )

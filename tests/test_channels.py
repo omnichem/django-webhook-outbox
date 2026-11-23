@@ -14,11 +14,11 @@ from webhook_outbox.services.channels.webhook import MAX_ERROR_BODY_CHARS
 
 def build_payload(**overrides) -> NotificationPayload:
     defaults = {
-        "message": "New registration for Acme Corp",
+        "message": "New order A-1042 from Acme Corp",
         "event_type": "insert",
-        "source_model": "supplier.supplierregistrationrequest",
+        "source_model": "shop.order",
         "source_pk": "38",
-        "tracked_table": "New supplier requests",
+        "tracked_table": "New orders",
         "occurred_at": datetime(2026, 8, 3, 10, 0, tzinfo=dt_timezone.utc),
     }
     defaults.update(overrides)
@@ -36,10 +36,10 @@ class NotificationPayloadTest(SimpleTestCase):
             result,
             {
                 "event": "insert",
-                "source_model": "supplier.supplierregistrationrequest",
+                "source_model": "shop.order",
                 "source_pk": "38",
-                "tracked_table": "New supplier requests",
-                "message": "New registration for Acme Corp",
+                "tracked_table": "New orders",
+                "message": "New order A-1042 from Acme Corp",
                 "occurred_at": "2026-08-03T10:00:00+00:00",
             },
         )
@@ -49,7 +49,7 @@ class NotificationPayloadTest(SimpleTestCase):
         entry = MagicMock()
         entry.message = "Test message"
         entry.event_type = "update"
-        entry.source_model = "supplier.supplierregistrationrequest"
+        entry.source_model = "shop.order"
         entry.source_pk = "7"
         entry.tracked_table.name = "Status changes"
         entry.created_at = datetime(2026, 8, 3, 12, 30, tzinfo=dt_timezone.utc)

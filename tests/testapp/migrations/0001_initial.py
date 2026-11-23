@@ -172,7 +172,7 @@ class Migration(migrations.Migration):
                     models.DateTimeField(auto_now=True, verbose_name="Updated at"),
                 ),
                 ("company_name", models.CharField(max_length=200)),
-                ("inn", models.CharField(max_length=12)),
+                ("registration_number", models.CharField(max_length=12)),
                 ("address", models.CharField(blank=True, max_length=200)),
                 (
                     "company_type",
