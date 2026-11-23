@@ -1,11 +1,18 @@
 import logging
+import uuid
 
 from django.utils.module_loading import import_string
 
 from webhook_outbox.conf import get_channel_paths
 from webhook_outbox.models import NotificationOutbox
 
-from .base import ENVELOPE_VERSION, BaseChannel, NotificationPayload
+from .base import (
+    ENVELOPE_VERSION,
+    ENVELOPE_VERSIONS,
+    BaseChannel,
+    NotificationPayload,
+    get_envelope_version,
+)
 from .webhook import WebhookChannel
 
 logger = logging.getLogger(__name__)
@@ -59,6 +66,8 @@ def dispatch(entry: NotificationOutbox) -> tuple[bool, str]:
     if not channel.is_active:
         return False, "Channel is inactive"
 
+    ensure_event_id(entry)
+
     channel_class = get_channel_class(channel.channel_type)
     if channel_class is None:
         return False, f"Unsupported channel type: {channel.channel_type}"
@@ -74,13 +83,37 @@ def dispatch(entry: NotificationOutbox) -> tuple[bool, str]:
         return False, str(e)
 
 
+def ensure_event_id(entry: NotificationOutbox) -> None:
+    """
+    Give an entry written before 1.1 (event_id NULL) a persistent event id,
+    so every attempt sends the same one.
+    """
+    if entry.event_id is not None or entry.pk is None:
+        return
+    candidate = uuid.uuid4()
+    updated = NotificationOutbox.objects.filter(
+        pk=entry.pk, event_id__isnull=True
+    ).update(event_id=candidate)
+    if updated:
+        entry.event_id = candidate
+    else:  # someone else assigned it first
+        entry.event_id = (
+            NotificationOutbox.objects.filter(pk=entry.pk)
+            .values_list("event_id", flat=True)
+            .first()
+        )
+
+
 __all__ = [
     "ENVELOPE_VERSION",
+    "ENVELOPE_VERSIONS",
     "BaseChannel",
     "NotificationPayload",
     "WebhookChannel",
     "dispatch",
+    "ensure_event_id",
     "get_channel_class",
+    "get_envelope_version",
     "get_channel_registry",
     "load_channel_class",
 ]

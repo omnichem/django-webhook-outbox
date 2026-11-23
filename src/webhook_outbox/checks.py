@@ -10,6 +10,8 @@ Configuration checks (always run):
 * webhook_outbox.E004 - TRACKABLE_EXCLUDE_APPS is not a list of strings
 * webhook_outbox.E005 - ADMIN_RETRY_HOOK is not an importable callable
 * webhook_outbox.E006 - a numeric setting has the wrong type or is out of range
+* webhook_outbox.E007 - ENVELOPE_VERSION is not 1 or 2, or
+  ENVELOPE_V1_EVENT_ID is not a bool
 
 Database checks (``manage.py check --database default``, and ``migrate``).
 They only warn: a stale row must not block deployments.
@@ -17,7 +19,8 @@ They only warn: a stale row must not block deployments.
 * webhook_outbox.W010 - a channel uses a channel type with no registered class
 * webhook_outbox.W011 - a tracked table points to a model that no longer exists
 * webhook_outbox.W012 - a tracked model lacks the timestamp fields its event
-  type needs (INSERT: created_at; UPDATE: created_at and updated_at)
+  type needs (INSERT: created_at; UPDATE: created_at and updated_at; DELETE
+  rules are not polled and need none)
 * webhook_outbox.W013 - a tracked table tracks webhook_outbox's own models
   (self-tracking feedback loop)
 """
@@ -35,6 +38,7 @@ NUMERIC_SETTINGS = {
     "MAX_RETRIES": (int, 1, "an integer >= 1"),
     "DELIVERY_BATCH_SIZE": (int, 1, "an integer >= 1"),
     "DEDUP_WINDOW_SECONDS": (int, 0, "an integer >= 0"),
+    "POLL_OVERLAP_SECONDS": (int, 0, "an integer >= 0"),
     "WEBHOOK_TIMEOUT": ((int, float), 0, "a number > 0"),
     "POLL_INTERVAL": ((int, float), 0, "a number > 0"),
     "SEND_INTERVAL": ((int, float), 0, "a number > 0"),
@@ -132,6 +136,33 @@ def check_settings(app_configs=None, **kwargs):
                 )
             )
 
+    errors.extend(_check_envelope_settings())
+
+    return errors
+
+
+def _check_envelope_settings() -> list:
+    from .services.channels.base import ENVELOPE_VERSIONS
+
+    errors = []
+    version = get_setting("ENVELOPE_VERSION")
+    if version not in ENVELOPE_VERSIONS or isinstance(version, bool):
+        errors.append(
+            Error(
+                f"{SETTING_NAME}['ENVELOPE_VERSION'] must be one of "
+                f"{', '.join(map(str, ENVELOPE_VERSIONS))}, got {version!r}.",
+                id="webhook_outbox.E007",
+            )
+        )
+    include_event_id = get_setting("ENVELOPE_V1_EVENT_ID")
+    if not isinstance(include_event_id, bool):
+        errors.append(
+            Error(
+                f"{SETTING_NAME}['ENVELOPE_V1_EVENT_ID'] must be True or False, "
+                f"got {include_event_id!r}.",
+                id="webhook_outbox.E007",
+            )
+        )
     return errors
 
 
@@ -216,6 +247,9 @@ def _check_tracked_table(tracked) -> list:
                 id="webhook_outbox.W011",
             )
         ]
+
+    if tracked.event_type == TrackedTable.EventType.DELETE:
+        return []  # not polled: fed by signal capture / enqueue()
 
     field_names = {f.name for f in model_class._meta.get_fields()}
     required = ["created_at"]

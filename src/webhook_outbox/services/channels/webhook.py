@@ -6,7 +6,7 @@ import httpx
 
 from webhook_outbox.conf import get_setting
 
-from .base import BaseChannel, NotificationPayload
+from .base import BaseChannel, NotificationPayload, validate_envelope_version
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,8 @@ class WebhookChannel(BaseChannel):
         - timeout: Request timeout in seconds (defaults to
           WEBHOOK_OUTBOX["WEBHOOK_TIMEOUT"], then the legacy
           settings.NOTIFICATION_WEBHOOK_TIMEOUT, then 30)
+        - envelope_version: 1 or 2 (defaults to
+          WEBHOOK_OUTBOX["ENVELOPE_VERSION"], 1). See docs/envelope.md.
 
     A response with a 2xx status is treated as success; anything else
     (redirects are not followed, so 3xx too) is reported as a failure so the
@@ -51,6 +53,7 @@ class WebhookChannel(BaseChannel):
         self.url = config["url"]
         self.headers = config.get("headers") or {}
         self.timeout = config.get("timeout") or get_setting("WEBHOOK_TIMEOUT")
+        self.envelope_version = config.get("envelope_version")
 
     def validate_config(self) -> None:
         """Validate webhook-specific configuration."""
@@ -83,6 +86,13 @@ class WebhookChannel(BaseChannel):
             if timeout <= 0:
                 raise ValueError("Webhook config field 'timeout' must be positive")
 
+        envelope_version = self.config.get("envelope_version")
+        if envelope_version is not None:
+            try:
+                validate_envelope_version(envelope_version)
+            except ValueError as e:
+                raise ValueError(f"Webhook config field 'envelope_version': {e}") from e
+
     def send(self, payload: NotificationPayload) -> tuple[bool, str]:
         """
         POST the notification payload to the configured URL.
@@ -97,7 +107,7 @@ class WebhookChannel(BaseChannel):
             with httpx.Client(timeout=self.timeout) as client:
                 response = client.post(
                     self.url,
-                    json=payload.as_dict(),
+                    json=payload.as_dict(self.envelope_version),
                     headers=self.headers,
                 )
 
