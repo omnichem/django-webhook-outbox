@@ -221,3 +221,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# django-webhook-outbox: compiled translations are shipped in the package
+!src/webhook_outbox/locale/*/LC_MESSAGES/django.mo
+
+# local tooling
+.ruff_cache/
