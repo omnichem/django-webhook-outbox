@@ -24,6 +24,9 @@ from webhook_outbox.services.poller import poll_all_tables
 
 logger = logging.getLogger(__name__)
 
+# How often (seconds) the loop looks at the "got a signal" flag while idle.
+SIGNAL_CHECK_INTERVAL = 0.5
+
 
 def poll_once() -> int:
     """Poll every active tracked table once. Returns the number of entries queued."""
@@ -94,6 +97,11 @@ def run_forever(
 
     stop = stop_event if stop_event is not None else threading.Event()
 
+    # The signal handler only records the signal: Event.set() takes a
+    # non-reentrant lock that the interrupted main thread may be holding.
+    # The loop polls this flag between short wait slices.
+    signalled: list[int] = []
+
     previous_handlers: dict[int, Any] = {}
     if (
         install_signal_handlers
@@ -104,7 +112,7 @@ def run_forever(
             logger.info(
                 f"webhook_outbox worker: got {signal.Signals(signum).name}, stopping"
             )
-            stop.set()
+            signalled.append(signum)
 
         for signum in (signal.SIGTERM, signal.SIGINT):
             previous_handlers[signum] = signal.signal(signum, _handle_signal)
@@ -120,19 +128,19 @@ def run_forever(
     next_send = now if deliver else float("inf")
 
     try:
-        while not stop.is_set():
+        while not (stop.is_set() or signalled):
             now = time.monotonic()
             if now >= next_poll:
                 _run_step("poll", poll_once)
                 next_poll = now + poll_interval
-            if stop.is_set():
+            if stop.is_set() or signalled:
                 break
             now = time.monotonic()
             if now >= next_send:
                 _run_step("deliver", deliver_once)
                 next_send = now + send_interval
             timeout = max(0.0, min(next_poll, next_send) - time.monotonic())
-            stop.wait(timeout)
+            stop.wait(min(timeout, SIGNAL_CHECK_INTERVAL))
     finally:
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)

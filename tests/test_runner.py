@@ -107,6 +107,31 @@ def test_run_forever_stops_on_signal_and_restores_handler(
     assert signal.getsignal(signum) == previous
 
 
+def test_signal_handler_does_not_touch_the_event_lock(no_connection_handling):
+    """Event.set() in a handler can deadlock the thread it interrupted."""
+
+    class ForbiddenSetEvent(threading.Event):
+        def set(self):
+            raise AssertionError("Event.set() called")
+
+    calls = []
+
+    def poll_and_signal():
+        calls.append("poll")
+        signal.raise_signal(signal.SIGTERM)
+        return 0
+
+    with patch("webhook_outbox.runner.poll_once", poll_and_signal):
+        runner.run_forever(
+            poll_interval=10,
+            send_interval=10,
+            stop_event=ForbiddenSetEvent(),
+            deliver=False,
+        )
+
+    assert calls == ["poll"]
+
+
 @pytest.mark.django_db(transaction=True)
 def test_run_forever_end_to_end(mock_transport):
     recorder = mock_transport(lambda request: httpx.Response(200))
