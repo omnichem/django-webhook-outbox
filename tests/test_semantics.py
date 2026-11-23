@@ -349,7 +349,9 @@ def test_poll_locks_the_tracked_table_row():
         poll_table(tracked)
     table = TrackedTable._meta.db_table
     assert any(
-        "FOR UPDATE" in q["sql"] and table in q["sql"] for q in queries.captured_queries
+        ("FOR UPDATE" in q["sql"] or "FOR NO KEY UPDATE" in q["sql"])
+        and table in q["sql"]
+        for q in queries.captured_queries
     )
 
 
@@ -382,6 +384,25 @@ def test_fixed_failed_outbox_insert_keeps_cursor_and_next_poll_emits(overlap):
             assert poll_table(tracked) == 1
         assert [e.source_pk for e in entries()] == [str(Company.objects.get().pk)]
         assert reload(tracked).last_polled_at == T0 + timedelta(seconds=201 - overlap)
+
+
+def test_insert_is_queued_before_update_of_the_same_row():
+    channel = create_channel()
+    # The UPDATE rule is created first: ordering must not depend on that.
+    update_rule = create_tracked_table(Company, "update", channel=channel)
+    insert_rule = create_tracked_table(Company, "insert", channel=channel)
+    with at(0):
+        poll_all_tables()
+    with at(1):
+        company = create_company("Both")
+    with at(5):
+        company.company_name = "Renamed"
+        company.save()
+
+    with at(200):
+        assert poll_all_tables() == 2
+
+    assert [e.tracked_table for e in entries()] == [insert_rule, update_rule]
 
 
 def test_fixed_error_during_detection_rolls_back_cursor():

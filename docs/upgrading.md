@@ -46,7 +46,8 @@ the envelope:
    effect: a row created and then updated more than a second later, between
    two polls, now also gives an UPDATE event (1.0 reported only the INSERT).
    Set `POLL_OVERLAP_SECONDS = 0` for the 1.0 cursor.
-3. **Polls lock the tracked table's row** (`SELECT ... FOR UPDATE`) and
+3. **Polls lock the tracked table's row** (`SELECT ... FOR NO KEY UPDATE`, `FOR UPDATE` on
+   databases without it) and
    re-read the cursor under the lock. A second poller of the same table
    waits instead of queueing the same change again. Delivery is unchanged:
    still run one delivery worker per database.

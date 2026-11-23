@@ -211,6 +211,11 @@ def _post_save(sender, instance, created, raw=False, update_fields=None, **kwarg
     if created:
         _capture(sender, instance, TrackedTable.EventType.INSERT.value, None)
     else:
+        try:
+            changes = _changes(options, instance, old)
+        except Exception:
+            logger.exception(f"Signal capture: cannot compare values of {instance!r}")
+            changes = None
         # save(update_fields=[...]) without updated_at leaves the column as
         # it was: do not record a stale timestamp for this event.
         use_timestamp = update_fields is None or "updated_at" in update_fields
@@ -218,7 +223,7 @@ def _post_save(sender, instance, created, raw=False, update_fields=None, **kwarg
             sender,
             instance,
             TrackedTable.EventType.UPDATE.value,
-            _changes(options, instance, old),
+            changes,
             use_timestamp=use_timestamp,
         )
 

@@ -13,7 +13,7 @@ Planned as 1.1.0. Run `migrate webhook_outbox` after upgrading; see
 
 - **The poller no longer loses events on errors** (#2). Detection, the
   outbox inserts and the cursor update run in one transaction that locks
-  the tracked table's row (`SELECT ... FOR UPDATE`) and re-reads the cursor.
+  the tracked table's row (`SELECT ... FOR NO KEY UPDATE`, `FOR UPDATE` on databases without it) and re-reads the cursor.
   If any detected change cannot be queued, the cursor does not move and the
   next poll retries the window. The other rows are still queued, once. A
   row that can never be queued now holds its tracked table's cursor and is

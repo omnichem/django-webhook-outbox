@@ -103,8 +103,10 @@ at `now`. `overlap` is `POLL_OVERLAP_SECONDS` (default 60).
 How a poll runs:
 
 1. `poll_table()` opens a transaction and locks the tracked table's row
-   (`SELECT ... FOR UPDATE`; SQLite has no row locks and serialises writers
-   instead). It re-reads the cursor under the lock, so a second poller of the
+   (`SELECT ... FOR NO KEY UPDATE` on PostgreSQL, so it does not delay the
+   commits of transactions that queued events; `FOR UPDATE` where that is
+   not supported, such as MySQL; SQLite has no row locks and serialises
+   writers instead). It re-reads the cursor under the lock, so a second poller of the
    same table waits and then continues from the cursor the first one left.
 2. It finds the changes, and writes each entry in its own savepoint. One
    row that fails, in rendering or in the insert, does not stop the others.
@@ -126,7 +128,10 @@ created after the cursor when its `updated_at` is more than one second
 after its `created_at`. Without this, an update made within a minute of an
 insert would never be reported. The one-second margin separates a real
 update from the creation itself, which writes both fields microseconds
-apart.
+apart. This assumes `created_at` is set at save time (`auto_now_add`); a
+`created_at` filled earlier, for example by `default=timezone.now` on an
+instance built more than one second before `save()`, also reports the
+creation as an UPDATE.
 
 `POLL_OVERLAP_SECONDS = 0` restores the 1.0 cursor (`since = now`) and its
 late-commit race.

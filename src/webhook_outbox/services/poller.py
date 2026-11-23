@@ -2,9 +2,8 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from django.db import models, transaction
+from django.db import connection, models, transaction
 from django.db.models import F, Q
-from django.db.utils import IntegrityError
 from django.utils import timezone
 
 from webhook_outbox.conf import get_setting
@@ -213,11 +212,15 @@ def poll_all_tables() -> int:
     Returns:
         Number of notifications queued
     """
-    active_tables = TrackedTable.objects.filter(
-        is_active=True,
-        channel__is_active=True,
-        event_type__in=POLLED_EVENT_TYPES,
-    ).select_related("channel")
+    active_tables = (
+        TrackedTable.objects.filter(
+            is_active=True,
+            channel__is_active=True,
+            event_type__in=POLLED_EVENT_TYPES,
+        ).select_related("channel")
+        # "insert" sorts before "update": a row's INSERT is queued first.
+        .order_by("content_type__app_label", "content_type__model", "event_type", "pk")
+    )
 
     total_queued = 0
 
@@ -236,7 +239,8 @@ def poll_table(tracked_table: TrackedTable) -> int:
     Poll a single tracked table and create outbox entries.
 
     Everything happens in one transaction that holds a row lock on the
-    tracked table (``SELECT ... FOR UPDATE``), so two pollers of the same
+    tracked table (``SELECT ... FOR NO KEY UPDATE``, ``FOR UPDATE`` where that
+    is not supported), so two pollers of the same
     table run one after the other. The cursor is re-read under the lock.
 
     * Each change is written in its own savepoint: one row that cannot be
@@ -269,7 +273,9 @@ def poll_table(tracked_table: TrackedTable) -> int:
 
     with transaction.atomic():
         since = (
-            TrackedTable.objects.select_for_update()
+            TrackedTable.objects.select_for_update(
+                no_key=connection.features.has_select_for_no_key_update
+            )
             .values_list("last_polled_at", flat=True)
             .get(pk=tracked_table.pk)
         )
@@ -343,11 +349,6 @@ def _queue_changes(
                 f"Queued notification for {tracked_table.model_path}#{change.instance.pk}"
             )
 
-        except IntegrityError:
-            logger.debug(
-                f"Duplicate notification prevented for "
-                f"{tracked_table.model_path}#{change.instance.pk}"
-            )
         except Exception as e:
             failed += 1
             logger.exception(

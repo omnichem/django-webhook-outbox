@@ -179,6 +179,22 @@ def test_failure_is_logged_and_does_not_break_the_save(rules, caplog):
     assert "Signal capture: cannot queue 'insert'" in caplog.text
 
 
+@override_settings(
+    WEBHOOK_OUTBOX={"SIGNAL_CAPTURE": {"testapp.company": {"fields": ["address"]}}}
+)
+def test_failure_comparing_values_does_not_break_the_save(rules, caplog):
+    company = create_company("Before")
+
+    with patch("webhook_outbox.capture._changes", side_effect=ValueError("odd type")):
+        company.company_name = "After"
+        company.save()
+
+    company.refresh_from_db()
+    assert company.company_name == "After"
+    assert ("update", str(company.pk)) in events()
+    assert "Signal capture: cannot compare values" in caplog.text
+
+
 # --- changes ----------------------------------------------------------------------
 
 

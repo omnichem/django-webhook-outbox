@@ -56,7 +56,7 @@ JSON Schema:
   "additionalProperties": false,
   "properties": {
     "event": {"type": "string", "minLength": 1, "maxLength": 10},
-    "source_model": {"type": "string", "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"},
+    "source_model": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[a-z0-9_]+$"},
     "source_pk": {"type": "string"},
     "tracked_table": {"type": "string"},
     "message": {"type": "string"},
@@ -132,7 +132,7 @@ JSON Schema:
       "required": ["model", "pk"],
       "additionalProperties": false,
       "properties": {
-        "model": {"type": "string", "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"},
+        "model": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[a-z0-9_]+$"},
         "pk": {"type": "string"}
       }
     },
