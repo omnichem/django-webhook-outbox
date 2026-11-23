@@ -130,6 +130,17 @@ def test_valid_1_1_settings():
     assert ids(run_checks()) == []
 
 
+@pytest.mark.parametrize("hook", ["tests.channels.nope", "tests.channels.SENT"])
+def test_enqueue_hook_must_be_callable(hook):
+    with override_settings(WEBHOOK_OUTBOX={"ENQUEUE_HOOK": hook}):
+        assert ids(run_checks()) == ["webhook_outbox.E005"]
+
+
+@override_settings(WEBHOOK_OUTBOX={"ENQUEUE_HOOK": "tests.channels.enqueue_hook"})
+def test_enqueue_hook_ok():
+    assert ids(run_checks()) == []
+
+
 def test_admin_retry_hook_ok():
     assert ids(run_checks()) == []
 

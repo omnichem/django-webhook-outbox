@@ -9,4 +9,12 @@ class WebhookOutboxConfig(AppConfig):
     verbose_name = _("Webhook outbox")
 
     def ready(self):
-        from . import checks  # noqa: F401  (registers the system checks)
+        from django.core.signals import setting_changed
+
+        from . import capture, checks  # noqa: F401  (registers the system checks)
+
+        capture.connect()
+        setting_changed.connect(
+            capture.on_setting_changed,
+            dispatch_uid="webhook_outbox.capture.on_setting_changed",
+        )

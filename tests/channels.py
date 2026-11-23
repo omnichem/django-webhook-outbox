@@ -26,3 +26,10 @@ def retry_hook(outbox_id):
 
 def broken_hook(outbox_id):
     raise ConnectionError("broker down")
+
+
+ENQUEUED = []
+
+
+def enqueue_hook(outbox_id):
+    ENQUEUED.append(outbox_id)
