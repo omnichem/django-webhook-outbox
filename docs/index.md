@@ -3,7 +3,7 @@
 - [Concepts](concepts.md)
 - [Semantics and known limitations](semantics.md)
 - [Settings reference](settings.md)
-- [Envelope v1](envelope.md)
+- [Envelopes v1 and v2](envelope.md)
 - [Channels](channels.md)
 - [Security notes](security.md)
 - [Runners](runners.md)

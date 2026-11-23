@@ -8,8 +8,12 @@ a message template. A poller finds new and changed rows by their
 A delivery pass then POSTs each outbox entry as JSON to the channel's URL and
 retries failures.
 
-- No database triggers and no signals: any model with `created_at` /
-  `updated_at` fields can be tracked, including models of third-party apps.
+- No database triggers: any model with `created_at` / `updated_at` fields
+  can be tracked by polling, including models of third-party apps.
+- When polling is not enough (deletes, bulk updates, every state change,
+  old/new values), queue events yourself with `webhook_outbox.enqueue()` in
+  the transaction of the change, or turn on signal capture for selected
+  models.
 - Delivery goes through an outbox table: pending, sent and failed entries are
   visible in the admin, and failed ones can be retried from there.
 - Celery is optional. The core runs from a management command
@@ -18,9 +22,24 @@ retries failures.
 - English and Russian admin.
 
 The package was extracted from a production Django service. Release 1.0.0
-keeps that code's behaviour exactly, known limitations included. They are
-listed in [docs/semantics.md](docs/semantics.md); read that page before you
-rely on the package for anything that must not lose or duplicate events.
+keeps that code's behaviour exactly, known limitations included. Release 1.1
+fixes the ways the poller could lose events and adds an opt-in envelope v2
+with a stable event id. What polling, signal capture and `enqueue()` can and
+cannot guarantee is listed in [docs/semantics.md](docs/semantics.md). Read
+that page before you rely on the package for anything that must not lose or
+duplicate events.
+
+### Queueing events from code
+
+```python
+from django.db import transaction
+from webhook_outbox import enqueue
+
+with transaction.atomic():
+    order.status = "paid"
+    order.save()
+    enqueue(order, event_type="update")  # commits or rolls back with the order
+```
 
 ## Requirements
 
@@ -112,7 +131,7 @@ python manage.py webhook_outbox_worker          # poll every 30s, deliver every 
 python manage.py webhook_outbox_worker --once   # one pass, e.g. from cron
 ```
 
-Run **one** worker process per database (see
+Run **one** delivery worker per database (see
 [limitations](docs/semantics.md#known-limitations)). It stops cleanly on
 SIGTERM/SIGINT. Systemd, Kubernetes and cron examples are in
 [docs/runners.md](docs/runners.md).
@@ -141,7 +160,7 @@ WEBHOOK_OUTBOX = {
 - [Concepts](docs/concepts.md): channels, tracked tables, the outbox, the data flow
 - [Semantics and known limitations](docs/semantics.md)
 - [Settings reference](docs/settings.md)
-- [Envelope v1](docs/envelope.md): the JSON document receivers get
+- [Envelopes v1 and v2](docs/envelope.md): the JSON documents receivers get
 - [Channels](docs/channels.md): webhook config, writing your own channel
 - [Security notes](docs/security.md)
 - [Runners](docs/runners.md): worker loop, cron, Celery

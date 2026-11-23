@@ -3,11 +3,70 @@
 ## Versioning policy
 
 - Versions follow semantic versioning and are taken from git tags (`X.Y.Z`).
-- Within 1.x the envelope (v1), the model schema and the documented
-  semantics stay the same. New migrations will only add things.
+- Within 1.x envelope v1 stays the same, and new migrations only add
+  things (1.1 adds nullable columns). Documented semantics change only as
+  described below and in the changelog.
 - Fixes for the [known limitations](semantics.md#known-limitations) change
-  observable behaviour. They will be opt-in or come with a major version,
-  and the changelog will say so.
+  observable behaviour. They are opt-in or come with a major version, unless
+  they fix lost events without changing the envelope. The changelog says
+  so.
+
+## Upgrading from 1.0 to 1.1
+
+```console
+pip install -U django-webhook-outbox
+python manage.py migrate webhook_outbox
+```
+
+**The migration.** `0002_1_1_event_fields` only adds nullable columns:
+`event_id`, `source_changed_at`, `changes` and `extra` on the outbox, and
+`dedup_window_seconds` on tracked tables. It also adds the `delete` event
+type choice, which needs no SQL. Every operation is a plain
+`ALTER TABLE ... ADD COLUMN ... NULL`, with no backfill and no table rewrite
+on PostgreSQL. Rows written by 1.0 keep `NULL` and stay valid. Each one
+gets an `event_id` on its first delivery attempt.
+
+**The envelope does not change.** With default settings the webhook body
+is byte-for-byte the 1.0 document. Envelope v2 and the v1 `event_id` key
+are opt-in (`ENVELOPE_VERSION`, `ENVELOPE_V1_EVENT_ID`, or
+`"envelope_version"` in a channel config).
+
+**Behaviour changes by default.** These fix lost events and do not change
+the envelope:
+
+1. **The poller writes entries and the cursor in one transaction.** If a
+   change cannot be queued (for example, the template raises or the insert
+   fails), the cursor stays where it was and the next poll retries. The
+   other rows of the same poll are still queued, once. A row that can never
+   be queued now holds its tracked table's cursor and is logged on every
+   poll. In 1.0 it was silently skipped.
+2. **`POLL_OVERLAP_SECONDS = 60`.** The cursor (`last_polled_at`) now trails
+   the poll time by up to 60 s, and each poll re-reads that minute. Rows
+   that commit late are reported (once) instead of being lost. A side
+   effect: a row created and then updated more than a second later, between
+   two polls, now also gives an UPDATE event (1.0 reported only the INSERT).
+   Set `POLL_OVERLAP_SECONDS = 0` for the 1.0 cursor.
+3. **Polls lock the tracked table's row** (`SELECT ... FOR UPDATE`) and
+   re-read the cursor under the lock. A second poller of the same table
+   waits instead of queueing the same change again. Delivery is unchanged:
+   still run one delivery worker per database.
+4. **Re-reads are recognised by the row timestamp**, independently of
+   `DEDUP_WINDOW_SECONDS`. The window itself still applies with its 1.0
+   default of 300 s. Tracked tables can override it
+   (`dedup_window_seconds`).
+5. **DELETE rules are skipped by the poller**, and `poll_all_tables()` only
+   polls insert and update rules. Tracked tables in 1.0 had only those two.
+
+**Downgrading** to 1.0 needs no schema change: 1.0 ignores the new
+nullable columns. To drop them, run `migrate webhook_outbox 0001_initial`
+*before* installing 1.0. A cursor left by 1.1 can
+be up to `POLL_OVERLAP_SECONDS` behind. 1.0 re-reads that window, and its
+dedup window drops the repeats as long as `DEDUP_WINDOW_SECONDS` is larger
+than the overlap.
+
+`TablePoller.poll()` still detects changes and moves the cursor at once,
+for code that called it directly. `poll_table()` no longer uses it. Call
+`poll_table()` to get the 1.1 guarantees.
 
 ## Migrating from the original in-house `notifications` app
 
