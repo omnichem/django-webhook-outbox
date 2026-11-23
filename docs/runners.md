@@ -16,8 +16,13 @@ python manage.py webhook_outbox_worker --once [--only poll|deliver]
 
 - Polls every `POLL_INTERVAL` (30 s) and delivers every `SEND_INTERVAL`
   (10 s), both starting immediately.
-- SIGTERM or SIGINT stops the loop after the step in progress finishes.
-  Nothing is cut off in the middle of an HTTP request.
+- SIGTERM or SIGINT stops the loop after the step in progress finishes. The
+  stop is checked only between steps, not between entries: a delivery pass
+  handles up to `DELIVERY_BATCH_SIZE` (100) entries one after another, so in
+  the worst case it takes `DELIVERY_BATCH_SIZE` x the channel timeout (100 x
+  30 s). If the process is killed before that (SIGKILL), a request can be cut
+  off in the middle, and an entry whose 2xx response arrived but was not yet
+  committed is sent again (at-least-once).
 - An exception in a step is logged and the loop keeps going. Database
   connections are checked between steps (`close_old_connections`), so a
   restarted database or `CONN_MAX_AGE` does not kill the worker.
@@ -60,8 +65,10 @@ TimeoutStopSec=60
 WantedBy=multi-user.target
 ```
 
-Set `TimeoutStopSec` above your largest channel timeout, so that a delivery
-in progress can finish.
+Delivery is only stopped between passes, so size `TimeoutStopSec` to
+`DELIVERY_BATCH_SIZE` x your largest channel timeout, or lower
+`DELIVERY_BATCH_SIZE` (and the channel timeouts) to keep a pass short. Past
+that, the process is killed and the sent-but-not-committed entry is resent.
 
 ### Kubernetes / docker compose
 
