@@ -43,6 +43,12 @@ These are deliberate and small:
    plain function that commits the attempt first; the Celery task then asks
    Celery to retry. The entry's `retry_count` therefore moves on every
    attempt, as it already did in `process_outbox`.
+
+   **The retry budget changes with it.** In the original, attempts made by
+   the Celery single-send task did not count against `MAX_RETRIES`: an entry
+   retried from the admin could get up to 4 task attempts plus 3 delivery
+   pass attempts. Now all attempts share one budget of `MAX_RETRIES` (3 by
+   default), so such an entry becomes *failed* sooner.
 2. **The admin "Retry" action no longer needs Celery.** It resets the
    entries as before. The immediate push (`send_single_notification.delay`)
    happens only when `ADMIN_RETRY_HOOK` is set. Without the hook, the next
@@ -122,4 +128,13 @@ that the old and the new poller never run at the same time:
    admin. Their first poll then starts from "now", without backfill.
 4. Start the new runner ([runners.md](runners.md)). Purge any queued Celery
    messages that still use the old task names.
-5. Once everything works, remove the old models in a later release.
+5. **Grant the admin permissions again.** Permissions and groups are keyed
+   by content type, so `notifications.change_trackedtable` and the like do
+   not carry over to `webhook_outbox.*`. Until you grant the new
+   `webhook_outbox.*` permissions to the staff users and groups, they lose
+   access to the admin pages.
+6. **Rename Celery task routes and annotations.** If `CELERY_TASK_ROUTES`,
+   `task_annotations` or similar settings mention the old
+   `notifications.tasks.*` names, change them to the new
+   `webhook_outbox.*` task names (see the table above).
+7. Once everything works, remove the old models in a later release.
