@@ -1,0 +1,188 @@
+# Russian translation of django-webhook-outbox.
+msgid ""
+msgstr ""
+"Project-Id-Version: django-webhook-outbox\n"
+"Report-Msgid-Bugs-To: https://github.com/omnichem/django-webhook-outbox/issues\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : n%10==0 || (n%10>=5 && n%10<=9) || (n%100>=11 && n%100<=14)? 2 : 3);\n"
+
+msgid "Active"
+msgstr "Активный"
+
+msgid "Channel Type"
+msgstr "Тип канала"
+
+msgid ""
+"Channel-specific config. Webhook: {\"url\": \"https://...\", \"headers\": "
+"{\"Authorization\": \"Bearer ...\"}, \"timeout\": 30}"
+msgstr ""
+"Настройки канала. Вебхук: {\"url\": \"https://...\", \"headers\": "
+"{\"Authorization\": \"Bearer ...\"}, \"timeout\": 30}"
+
+msgid "Configuration"
+msgstr "Настройки"
+
+msgid "Created at"
+msgstr "Создано"
+
+msgid "Django model to track"
+msgstr "Отслеживаемая модель Django"
+
+msgid "Error Message"
+msgstr "Текст ошибки"
+
+msgid "Event Type"
+msgstr "Тип события"
+
+msgid "Failed"
+msgstr "Ошибка"
+
+msgid "Full model path, e.g., 'shop.order'"
+msgstr "Полный путь модели, например 'shop.order'"
+
+msgid "Human-readable name for this channel"
+msgstr "Понятное название канала"
+
+msgid "Human-readable name for this tracking rule"
+msgstr "Понятное название правила отслеживания"
+
+msgid ""
+"Immediate delivery could not be started for {} notification(s); they will be "
+"sent by the next delivery run."
+msgstr ""
+"Не удалось сразу запустить отправку уведомлений: {}; они будут отправлены при"
+" следующем проходе доставки."
+
+msgid "Insert"
+msgstr "Создание"
+
+msgid "Last Polled At"
+msgstr "Последний опрос"
+
+msgid "Mark selected as sent (skip sending)"
+msgstr "Отметить выбранные как отправленные (без отправки)"
+
+msgid "Marked {} notification(s) as sent."
+msgstr "Отмечено как отправленные: {}."
+
+msgid "Message"
+msgstr "Сообщение"
+
+msgid "Message Template"
+msgstr "Шаблон сообщения"
+
+msgid "Model"
+msgstr "Модель"
+
+msgid "Model Configuration"
+msgstr "Модель"
+
+msgid "Name"
+msgstr "Наименование"
+
+msgid "Notification"
+msgstr "Уведомление"
+
+msgid "Notification Channel"
+msgstr "Канал уведомлений"
+
+msgid "Notification Channels"
+msgstr "Каналы уведомлений"
+
+msgid "Notification Outbox"
+msgstr "Исходящее уведомление"
+
+msgid "Notification Outbox Entries"
+msgstr "Исходящие уведомления"
+
+msgid "Pending"
+msgstr "Ожидает отправки"
+
+msgid "Queued {} notification(s) for retry."
+msgstr "Поставлено в очередь на повторную отправку: {}."
+
+msgid "Rendered notification message"
+msgstr "Готовый текст уведомления"
+
+msgid "Retry Count"
+msgstr "Число попыток"
+
+msgid "Retry selected failed notifications"
+msgstr "Повторить отправку выбранных неотправленных уведомлений"
+
+msgid ""
+"Select the model to track and the event type. INSERT: notifies on new "
+"records. UPDATE: notifies on any change to existing records."
+msgstr ""
+"Выберите модель и тип события. INSERT: уведомление о новых записях. UPDATE: "
+"уведомление о любом изменении существующих записей."
+
+msgid "Sent"
+msgstr "Отправлено"
+
+msgid "Sent At"
+msgstr "Отправлено в"
+
+msgid "Source"
+msgstr "Источник"
+
+msgid "Source Model"
+msgstr "Модель-источник"
+
+msgid "Source Primary Key"
+msgstr "Первичный ключ источника"
+
+msgid "Status"
+msgstr "Статус"
+
+msgid ""
+"Template with {field} placeholders. Supports FK traversal: "
+"{company.company_name}, {status.value}"
+msgstr ""
+"Шаблон с подстановками {field}. Поддерживаются поля связанных моделей: "
+"{company.company_name}, {status.value}"
+
+msgid "Timestamp of the last successful poll"
+msgstr "Время последнего успешного опроса"
+
+msgid "Timestamps"
+msgstr "Даты"
+
+msgid "Tracked Table"
+msgstr "Отслеживаемая таблица"
+
+msgid "Tracked Tables"
+msgstr "Отслеживаемые таблицы"
+
+msgid "Update"
+msgstr "Изменение"
+
+msgid "Updated at"
+msgstr "Обновлено"
+
+msgid ""
+"Use {field_name} for direct fields, {relation.field} for FK traversal, "
+"{admin_link} for admin panel URL. Example: 'New request for "
+"{company.company_name}\\n{admin_link}'"
+msgstr ""
+"{field_name} — поле модели, {relation.field} — поле связанной модели (FK), "
+"{admin_link} — ссылка на запись в админке. Пример: 'Новая заявка от "
+"{company.company_name}\\n{admin_link}'"
+
+msgid "Webhook"
+msgstr "Вебхук"
+
+msgid "Webhook outbox"
+msgstr "Исходящие вебхуки"
+
+msgid ""
+"Webhook: {\"url\": \"https://example.com/hooks/outbox\", \"headers\": "
+"{\"Authorization\": \"Bearer ...\"}, \"timeout\": 30}. Only url is required; "
+"headers authenticate the outgoing call."
+msgstr ""
+"Вебхук: {\"url\": \"https://example.com/hooks/outbox\", \"headers\": "
+"{\"Authorization\": \"Bearer ...\"}, \"timeout\": 30}. Обязателен только url;"
+" заголовки нужны для авторизации исходящего запроса."
