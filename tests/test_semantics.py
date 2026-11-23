@@ -30,6 +30,7 @@ from tests.testapp.models import (
     SoftDeletedItem,
 )
 from webhook_outbox.models import NotificationOutbox, TrackedTable
+from webhook_outbox.services.channels import NotificationPayload
 from webhook_outbox.services.poller import poll_all_tables, poll_table
 from webhook_outbox.services.template import render_template
 
@@ -192,6 +193,31 @@ def test_limitation_row_created_exactly_at_cursor_is_never_reported():
     assert entries(insert) == entries(update) == []
 
 
+def test_limitation_no_event_id_or_old_values():
+    """The envelope has exactly these keys: no event id, no old/new values."""
+    tracked = create_tracked_table(Company, "update")
+    with at(-10):
+        company = create_company("Before")
+    with at(0):
+        poll_table(tracked)
+    with at(1):
+        company.company_name = "After"
+        company.save()
+    with at(2):
+        assert poll_table(tracked) == 1
+
+    payload = NotificationPayload.from_outbox(entries()[0])
+
+    assert set(payload.as_dict()) == {
+        "event",
+        "source_model",
+        "source_pk",
+        "tracked_table",
+        "message",
+        "occurred_at",
+    }
+
+
 # --- dedup window -------------------------------------------------------------
 
 
@@ -261,6 +287,24 @@ def test_limitation_dedup_suppresses_a_legitimate_second_update():
 
     # The second, real change at t=89.5 is dropped: same row, within 300s.
     assert len(entries()) == 1
+
+
+@override_settings(WEBHOOK_OUTBOX={"DEDUP_WINDOW_SECONDS": 0})
+def test_limitation_no_locking_two_pollers_duplicate():
+    """Two pollers that read the same cursor both queue the same change."""
+    tracked = create_tracked_table(Company)
+    with at(0):
+        poll_table(tracked)
+    with at(1):
+        create_company("Twice")
+
+    other_poller = TrackedTable.objects.get(pk=tracked.pk)  # same cursor
+    with at(2):
+        assert poll_table(tracked) == 1
+    with at(3):
+        assert poll_table(other_poller) == 1
+
+    assert len(entries()) == 2
 
 
 # --- cursor / transactions ----------------------------------------------------
