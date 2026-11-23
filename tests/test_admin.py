@@ -159,12 +159,25 @@ def test_admin_pages_render(admin_client):
         admin_client.get(reverse("admin:webhook_outbox_trackedtable_add")).status_code
         == 200
     )
-    assert (
-        admin_client.get(
-            reverse("admin:webhook_outbox_notificationoutbox_change", args=[entry.pk])
-        ).status_code
-        == 200
+    response = admin_client.get(
+        reverse("admin:webhook_outbox_notificationoutbox_change", args=[entry.pk])
     )
+    assert response.status_code == 200
+    assert str(entry.event_id) in response.content.decode()
+
+
+def test_outbox_shows_1_1_fields_read_only(admin_client):
+    tracked = create_tracked_table(Company, channel=create_channel())
+    entry = create_outbox_entry(
+        tracked, changes={"status": {"old": "a", "new": "b"}}, extra={"k": "v"}
+    )
+    response = admin_client.get(
+        reverse("admin:webhook_outbox_notificationoutbox_change", args=[entry.pk])
+    )
+    content = response.content.decode()
+    for field in ("event_id", "source_changed_at", "changes", "extra"):
+        assert f"field-{field}" in content
+        assert f'name="{field}"' not in content  # read-only
 
 
 def test_outbox_permissions(rf):

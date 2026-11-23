@@ -20,6 +20,17 @@ def test_russian_translations():
         )
         assert str(NotificationOutbox.Status.FAILED.label) == "Ошибка"
         assert str(WebhookOutboxConfig.verbose_name) == "Исходящие вебхуки"
+        assert str(TrackedTable.EventType.DELETE.label) == "Удаление"
+        assert (
+            str(NotificationOutbox._meta.get_field("event_id").verbose_name)
+            == "ID события"
+        )
+        assert (
+            str(TrackedTable._meta.get_field("dedup_window_seconds").verbose_name)
+            == "Окно дедупликации (секунды)"
+        )
+        # The event type label does not hijack the admin's "Delete" button.
+        assert str(translation.gettext("Delete")) == "Удалить"
         assert (
             str(translation.gettext("Queued {} notification(s) for retry.")).format(2)
             == "Поставлено в очередь на повторную отправку: 2."

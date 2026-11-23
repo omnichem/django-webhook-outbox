@@ -204,7 +204,8 @@ class TrackedTableAdmin(admin.ModelAdmin):
                 "description": _(
                     "Select the model to track and the event type. "
                     "INSERT: notifies on new records. "
-                    "UPDATE: notifies on any change to existing records."
+                    "UPDATE: notifies on any change to existing records. "
+                    "DELETE: not polled; fed by signal capture or enqueue()."
                 ),
             },
         ),
@@ -223,7 +224,7 @@ class TrackedTableAdmin(admin.ModelAdmin):
         (
             _("Status"),
             {
-                "fields": ("last_polled_at",),
+                "fields": ("last_polled_at", "dedup_window_seconds"),
                 "classes": ("collapse",),
             },
         ),
@@ -280,6 +281,10 @@ class NotificationOutboxAdmin(admin.ModelAdmin):
         "message",
         "sent_at",
         "retry_count",
+        "event_id",
+        "source_changed_at",
+        "changes",
+        "extra",
     ]
     ordering = ["-created_at"]
     actions = ["retry_failed", "mark_as_sent"]
@@ -295,7 +300,14 @@ class NotificationOutboxAdmin(admin.ModelAdmin):
         (
             _("Message"),
             {
-                "fields": ("message",),
+                "fields": ("message", "changes", "extra"),
+            },
+        ),
+        (
+            _("Event"),
+            {
+                "fields": ("event_id", "source_changed_at"),
+                "classes": ("collapse",),
             },
         ),
         (

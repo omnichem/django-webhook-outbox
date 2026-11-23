@@ -4,6 +4,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import pgettext_lazy
 
 
 class TimeStampedModel(models.Model):
@@ -73,7 +74,8 @@ class TrackedTable(TimeStampedModel):
         INSERT = "insert", _("Insert")
         UPDATE = "update", _("Update")
         # Not polled: produced by signal capture or enqueue() only.
-        DELETE = "delete", _("Delete")
+        # Context: the bare "Delete" is the admin's delete button label.
+        DELETE = "delete", pgettext_lazy("event type", "Delete")
 
     name = models.CharField(
         max_length=100,
