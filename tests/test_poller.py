@@ -356,6 +356,36 @@ class PollAllTablesTest(TestCase):
             is_active=True,
         )
 
-        with patch("webhook_outbox.services.poller.TablePoller.poll") as mock_poll:
+        with patch("webhook_outbox.services.poller.poll_table") as mock_poll:
             poll_all_tables()
             mock_poll.assert_not_called()
+
+    def test_delete_rules_are_not_polled(self):
+        TrackedTable.objects.create(
+            name="Deletes",
+            content_type=self.user_ct,
+            event_type=TrackedTable.EventType.DELETE,
+            message_template="Test",
+            channel=self.channel,
+        )
+
+        with (
+            patch("webhook_outbox.services.poller.poll_table") as mock_poll,
+            self.assertNoLogs("webhook_outbox", level="ERROR"),
+        ):
+            poll_all_tables()
+            mock_poll.assert_not_called()
+
+    def test_poll_table_ignores_delete_rules(self):
+        tracked = TrackedTable.objects.create(
+            name="Deletes",
+            content_type=self.user_ct,
+            event_type=TrackedTable.EventType.DELETE,
+            message_template="Test",
+            channel=self.channel,
+        )
+
+        with self.assertNoLogs("webhook_outbox", level="ERROR"):
+            self.assertEqual(poll_table(tracked), 0)
+        tracked.refresh_from_db()
+        self.assertIsNone(tracked.last_polled_at)
