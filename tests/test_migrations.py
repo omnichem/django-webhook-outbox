@@ -52,11 +52,14 @@ def test_1_1_migration_sql_only_adds_columns():
     statements = [
         line
         for line in out.getvalue().splitlines()
-        if line.strip() and not line.startswith("--")
+        if line.strip()
+        and not line.startswith("--")
         and line not in ("BEGIN;", "COMMIT;")
     ]
     assert statements
-    assert all(line.startswith("ALTER TABLE") and "ADD COLUMN" in line for line in statements)
+    assert all(
+        line.startswith("ALTER TABLE") and "ADD COLUMN" in line for line in statements
+    )
 
 
 @pytest.mark.django_db(transaction=True)

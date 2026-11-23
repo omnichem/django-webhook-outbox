@@ -189,9 +189,7 @@ class SchemaTest(TestCase):
                     self.assertTrue(model._meta.get_field(name).null)
 
     def test_event_types(self):
-        self.assertEqual(
-            TrackedTable.EventType.values, ["insert", "update", "delete"]
-        )
+        self.assertEqual(TrackedTable.EventType.values, ["insert", "update", "delete"])
 
     def test_unique_together(self):
         self.assertEqual(

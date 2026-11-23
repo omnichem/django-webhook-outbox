@@ -380,12 +380,8 @@ def test_fixed_failed_outbox_insert_keeps_cursor_and_next_poll_emits(overlap):
 
         with at(201):
             assert poll_table(tracked) == 1
-        assert [e.source_pk for e in entries()] == [
-            str(Company.objects.get().pk)
-        ]
-        assert reload(tracked).last_polled_at == T0 + timedelta(
-            seconds=201 - overlap
-        )
+        assert [e.source_pk for e in entries()] == [str(Company.objects.get().pk)]
+        assert reload(tracked).last_polled_at == T0 + timedelta(seconds=201 - overlap)
 
 
 def test_fixed_error_during_detection_rolls_back_cursor():

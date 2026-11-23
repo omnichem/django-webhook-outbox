@@ -92,7 +92,11 @@ class Migration(migrations.Migration):
             model_name="trackedtable",
             name="event_type",
             field=models.CharField(
-                choices=[("insert", "Insert"), ("update", "Update"), ("delete", "Delete")],
+                choices=[
+                    ("insert", "Insert"),
+                    ("update", "Update"),
+                    ("delete", "Delete"),
+                ],
                 max_length=10,
                 verbose_name="Event Type",
             ),
