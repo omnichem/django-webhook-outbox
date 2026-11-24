@@ -26,6 +26,35 @@ type choice, which needs no SQL. Every operation is a plain
 on PostgreSQL. Rows written by 1.0 keep `NULL` and stay valid. Each one
 gets an `event_id` on its first delivery attempt.
 
+**PostgreSQL: locks during the migration.** The migration is
+metadata-only and fast, but each `ALTER TABLE` takes an `ACCESS EXCLUSIVE`
+lock on the outbox table and on the tracked-table table, and Django runs the
+whole migration in one transaction, so the locks are held until it commits.
+Behind a long-running transaction that touches either table the `ALTER`
+waits, and every query that arrives after it queues behind it, so traffic
+to those tables can stall. Run the migration with a short `lock_timeout`
+and retry if it fails (a failed migration rolls back completely):
+
+```console
+PGOPTIONS="-c lock_timeout=5s" python manage.py migrate webhook_outbox
+```
+
+`PGOPTIONS` is read by libpq, so it works with psycopg 2 and 3. The same
+setting can be passed through the `OPTIONS` of a dedicated migration
+database alias: `{"options": "-c lock_timeout=5000"}`. Do not leave it on
+the connections of the running application unless you want it there.
+
+**Rolling upgrade: never run 1.0 and 1.1 pollers at once.** Stop every 1.0
+poller (`webhook_outbox_worker`, `webhook_outbox_poll`, Celery beat
+entries) before you start a 1.1 poller. A 1.0 poller does not take the
+tracked-table lock, does not write `source_changed_at`, and advances the
+cursor before it writes the entries, which undoes the 1.1 lost-event fixes.
+Entries written
+by 1.0 have no `source_changed_at`, so when 1.1 re-reads rows inside the
+overlap it can only fall back to the dedup window for them. With
+`DEDUP_WINDOW_SECONDS` (or a tracked table's `dedup_window_seconds`) lower
+than `POLL_OVERLAP_SECONDS`, that gives duplicates.
+
 **The envelope does not change.** With default settings the webhook body
 is byte-for-byte the 1.0 document. Envelope v2 and the v1 `event_id` key
 are opt-in (`ENVELOPE_VERSION`, `ENVELOPE_V1_EVENT_ID`, or
@@ -46,9 +75,9 @@ the envelope:
    effect: a row created and then updated more than a second later, between
    two polls, now also gives an UPDATE event (1.0 reported only the INSERT).
    Set `POLL_OVERLAP_SECONDS = 0` for the 1.0 cursor.
-3. **Polls lock the tracked table's row** (`SELECT ... FOR NO KEY UPDATE`, `FOR UPDATE` on
-   databases without it) and
-   re-read the cursor under the lock. A second poller of the same table
+3. **Polls lock the tracked table's row** (`SELECT ... FOR NO KEY UPDATE`;
+   PostgreSQL only, SQLite takes no row lock) and re-read the cursor under
+   the lock. A second poller of the same table
    waits instead of queueing the same change again. Delivery is unchanged:
    still run one delivery worker per database.
 4. **Re-reads are recognised by the row timestamp**, independently of
@@ -57,17 +86,37 @@ the envelope:
    (`dedup_window_seconds`).
 5. **DELETE rules are skipped by the poller**, and `poll_all_tables()` only
    polls insert and update rules. Tracked tables in 1.0 had only those two.
+6. **`last_polled_at` trails the poll time** by up to
+   `POLL_OVERLAP_SECONDS`. Do not use it as "the time of the last poll".
+7. **A row that cannot be queued holds back its table's cursor.** The poll
+   logs at `ERROR` level `N change(s) of <app_label>.<model> could not be
+   queued; the cursor stays at <timestamp> and the next poll retries them`
+   (for example `shop.order`, the lowercase content-type name) on every run,
+   until the cause is fixed or the tracked table is deactivated.
+8. **Create, then update more than a second later, between two polls** now
+   gives an INSERT *and* an UPDATE event (see item 2).
 
 **Downgrading** to 1.0 needs no schema change: 1.0 ignores the new
 nullable columns. To drop them, run `migrate webhook_outbox 0001_initial`
-*before* installing 1.0. A cursor left by 1.1 can
+*before* installing 1.0. Reversing `0002` drops the columns with their data:
+`event_id`, `source_changed_at`, `changes`, `extra` and
+`dedup_window_seconds`. Queued entries keep working, but lose their event
+ids, and per-rule dedup windows are gone. A cursor left by 1.1 can
 be up to `POLL_OVERLAP_SECONDS` behind. 1.0 re-reads that window, and its
 dedup window drops the repeats as long as `DEDUP_WINDOW_SECONDS` is larger
-than the overlap.
+than the overlap. DELETE rules survive the reversal of `0002`: delete or
+deactivate them first. 1.0 logs an `ERROR` for each of them on every poll,
+and their admin forms fail to save.
 
 `TablePoller.poll()` still detects changes and moves the cursor at once,
 for code that called it directly. `poll_table()` no longer uses it. Call
-`poll_table()` to get the 1.1 guarantees.
+`poll_table()` to get the 1.1 guarantees. `poll()` now applies the overlap
+too: it moves the cursor to `max(cursor, now - POLL_OVERLAP_SECONDS)`, so
+consecutive calls return the rows inside the overlap window again. It does
+not de-duplicate. Code that calls it and writes its own outbox entries must
+de-duplicate them itself (for example by `source_pk` and the row timestamp),
+or set `POLL_OVERLAP_SECONDS = 0`. That setting is global: it also brings
+back the 1.0 late-commit loss for `poll_table()`.
 
 ## Migrating from the original in-house `notifications` app
 
