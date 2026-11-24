@@ -29,7 +29,8 @@ Run `migrate webhook_outbox` after upgrading; see
 
 - **The poller no longer loses events on errors** (#2). Detection, the
   outbox inserts and the cursor update run in one transaction that locks
-  the tracked table's row (`SELECT ... FOR NO KEY UPDATE`, `FOR UPDATE` on databases without it) and re-reads the cursor.
+  the tracked table's row (`SELECT ... FOR NO KEY UPDATE`; PostgreSQL only,
+  SQLite takes no row lock) and re-reads the cursor.
   If any detected change cannot be queued, the cursor does not move and the
   next poll retries the window. The other rows are still queued, once. A
   row that can never be queued now holds its tracked table's cursor and is
@@ -47,6 +48,9 @@ Run `migrate webhook_outbox` after upgrading; see
   column `source_changed_at`), independently of the dedup window. Two
   pollers of one tracked table no longer queue the same change twice.
 - `poll_all_tables()` / `poll_table()` skip DELETE rules.
+- `TablePoller.poll()` (kept for direct callers) also applies
+  `POLL_OVERLAP_SECONDS` now and does not de-duplicate, so it can return rows
+  again; see [docs/upgrading.md](docs/upgrading.md#upgrading-from-10-to-11).
 
 ### Added
 

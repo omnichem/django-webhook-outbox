@@ -25,8 +25,9 @@ retries failures.
 
 The package was extracted from a production Django service. Release 1.0.0
 keeps that code's behaviour exactly, known limitations included. Release 1.1
-fixes the ways the poller could lose events and adds an opt-in envelope v2
-with a stable event id. What polling, signal capture and `enqueue()` can and
+no longer loses events on errors, catches late commits up to
+`POLL_OVERLAP_SECONDS` (later ones can still be missed) and adds an opt-in
+envelope v2 with a stable event id. What polling, signal capture and `enqueue()` can and
 cannot guarantee is listed in [docs/semantics.md](docs/semantics.md). Read
 that page before you rely on the package for anything that must not lose or
 duplicate events.

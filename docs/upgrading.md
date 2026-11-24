@@ -47,7 +47,9 @@ the connections of the running application unless you want it there.
 **Rolling upgrade: never run 1.0 and 1.1 pollers at once.** Stop every 1.0
 poller (`webhook_outbox_worker`, `webhook_outbox_poll`, Celery beat
 entries) before you start a 1.1 poller. A 1.0 poller does not take the
-tracked-table lock and does not write `source_changed_at`. Entries written
+tracked-table lock, does not write `source_changed_at`, and advances the
+cursor before it writes the entries, which undoes the 1.1 lost-event fixes.
+Entries written
 by 1.0 have no `source_changed_at`, so when 1.1 re-reads rows inside the
 overlap it can only fall back to the dedup window for them. With
 `DEDUP_WINDOW_SECONDS` (or a tracked table's `dedup_window_seconds`) lower
@@ -73,9 +75,9 @@ the envelope:
    effect: a row created and then updated more than a second later, between
    two polls, now also gives an UPDATE event (1.0 reported only the INSERT).
    Set `POLL_OVERLAP_SECONDS = 0` for the 1.0 cursor.
-3. **Polls lock the tracked table's row** (`SELECT ... FOR NO KEY UPDATE`, `FOR UPDATE` on
-   databases without it) and
-   re-read the cursor under the lock. A second poller of the same table
+3. **Polls lock the tracked table's row** (`SELECT ... FOR NO KEY UPDATE`;
+   PostgreSQL only, SQLite takes no row lock) and re-read the cursor under
+   the lock. A second poller of the same table
    waits instead of queueing the same change again. Delivery is unchanged:
    still run one delivery worker per database.
 4. **Re-reads are recognised by the row timestamp**, independently of
@@ -87,9 +89,10 @@ the envelope:
 6. **`last_polled_at` trails the poll time** by up to
    `POLL_OVERLAP_SECONDS`. Do not use it as "the time of the last poll".
 7. **A row that cannot be queued holds back its table's cursor.** The poll
-   logs `N change(s) of app.Model could not be queued; the cursor stays at
-   <timestamp> and the next poll retries them` on every run, until the cause
-   is fixed or the tracked table is deactivated.
+   logs at `ERROR` level `N change(s) of <app_label>.<model> could not be
+   queued; the cursor stays at <timestamp> and the next poll retries them`
+   (for example `shop.order`, the lowercase content-type name) on every run,
+   until the cause is fixed or the tracked table is deactivated.
 8. **Create, then update more than a second later, between two polls** now
    gives an INSERT *and* an UPDATE event (see item 2).
 
@@ -101,16 +104,19 @@ nullable columns. To drop them, run `migrate webhook_outbox 0001_initial`
 ids, and per-rule dedup windows are gone. A cursor left by 1.1 can
 be up to `POLL_OVERLAP_SECONDS` behind. 1.0 re-reads that window, and its
 dedup window drops the repeats as long as `DEDUP_WINDOW_SECONDS` is larger
-than the overlap.
+than the overlap. DELETE rules survive the reversal of `0002`: delete or
+deactivate them first. 1.0 logs an `ERROR` for each of them on every poll,
+and their admin forms fail to save.
 
 `TablePoller.poll()` still detects changes and moves the cursor at once,
 for code that called it directly. `poll_table()` no longer uses it. Call
 `poll_table()` to get the 1.1 guarantees. `poll()` now applies the overlap
 too: it moves the cursor to `max(cursor, now - POLL_OVERLAP_SECONDS)`, so
-consecutive calls return the same rows again. It does not de-duplicate.
-Code that calls it and writes its own outbox entries must de-duplicate
-them itself (for example by `source_pk` and the row timestamp), or set
-`POLL_OVERLAP_SECONDS = 0`.
+consecutive calls return the rows inside the overlap window again. It does
+not de-duplicate. Code that calls it and writes its own outbox entries must
+de-duplicate them itself (for example by `source_pk` and the row timestamp),
+or set `POLL_OVERLAP_SECONDS = 0`. That setting is global: it also brings
+back the 1.0 late-commit loss for `poll_table()`.
 
 ## Migrating from the original in-house `notifications` app
 
