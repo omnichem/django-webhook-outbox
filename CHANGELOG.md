@@ -6,8 +6,24 @@ uses [semantic versioning](https://semver.org/). Versions come from git tags.
 
 ## [Unreleased]
 
-Planned as 1.1.0. Run `migrate webhook_outbox` after upgrading; see
+## [1.1.0] - 2026-11-24
+
+Run `migrate webhook_outbox` after upgrading; see
 [docs/upgrading.md](docs/upgrading.md#upgrading-from-10-to-11).
+
+### Known limitations
+
+- **Late commits are caught only up to `POLL_OVERLAP_SECONDS`** (default
+  `60`). A row whose transaction commits more than that many seconds after
+  its `created_at` / `updated_at` can still be missed, silently: no entry and
+  no log line ([#11](https://github.com/omnichem/django-webhook-outbox/issues/11)).
+  Workarounds: write those events with `webhook_outbox.enqueue()` or
+  `SIGNAL_CAPTURE` (both queue the entry in the same transaction), or raise
+  `POLL_OVERLAP_SECONDS`.
+- **Delivery is unchanged**: no row locking and no backoff
+  ([#6](https://github.com/omnichem/django-webhook-outbox/issues/6)). Run
+  exactly one delivery worker per database.
+- Django 6 is not supported yet (`Django>=4.2,<6`).
 
 ### Changed (behaviour, on by default: fixes lost events, envelope unchanged)
 
@@ -69,7 +85,7 @@ Planned as 1.1.0. Run `migrate webhook_outbox` after upgrading; see
   polling, signals and `enqueue()` in [docs/semantics.md](docs/semantics.md).
 - Admin shows the new fields; Russian translation updated.
 
-## [1.0.0] - unreleased (published when the `1.0.0` tag is pushed)
+## [1.0.0] - 2026-11-23
 
 First public release. A 1:1 behavioural port of the outgoing webhook
 pipeline of an in-house Django `notifications` app.
@@ -105,5 +121,6 @@ See [docs/upgrading.md](docs/upgrading.md#behaviour-differences). The known
 limitations of the original code are kept on purpose and documented in
 [docs/semantics.md](docs/semantics.md#known-limitations).
 
-[Unreleased]: https://github.com/omnichem/django-webhook-outbox/compare/1.0.0...HEAD
+[Unreleased]: https://github.com/omnichem/django-webhook-outbox/compare/1.1.0...HEAD
+[1.1.0]: https://github.com/omnichem/django-webhook-outbox/compare/1.0.0...1.1.0
 [1.0.0]: https://github.com/omnichem/django-webhook-outbox/releases/tag/1.0.0

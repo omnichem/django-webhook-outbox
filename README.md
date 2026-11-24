@@ -2,9 +2,11 @@
 
 Outgoing webhooks for Django models, configured in the Django admin.
 
-You pick a model and an event (`insert` or `update`) in the admin and write
-a message template. A poller finds new and changed rows by their
+You pick a model and an event (`insert`, `update` or `delete`) in the admin
+and write a message template. A poller finds new and changed rows by their
 `created_at` / `updated_at` timestamps and writes them to an outbox table.
+Deletes are not polled: `delete` events come from `webhook_outbox.enqueue()`
+or signal capture.
 A delivery pass then POSTs each outbox entry as JSON to the channel's URL and
 retries failures.
 
@@ -44,7 +46,9 @@ with transaction.atomic():
 ## Requirements
 
 - Python 3.10+
-- Django 4.2, 5.0, 5.1 or 5.2 (CI runs 4.2, 5.0 and 5.2 on PostgreSQL)
+- Django 4.2, 5.0, 5.1 or 5.2. CI runs each of them on PostgreSQL with every
+  Python version it supports from 3.10 to 3.13 (3.13 needs Django 5.1+), and
+  Django 5.2 on SQLite.
 - httpx 0.27+
 - Celery 5.3+ (optional, `[celery]` extra)
 
