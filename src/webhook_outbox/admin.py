@@ -177,6 +177,7 @@ class TrackedTableAdmin(admin.ModelAdmin):
         "model_display",
         "event_type",
         "channel",
+        "has_filter",
         "is_active_colored",
         "last_polled_at",
     ]
@@ -206,6 +207,20 @@ class TrackedTableAdmin(admin.ModelAdmin):
                     "INSERT: notifies on new records. "
                     "UPDATE: notifies on any change to existing records. "
                     "DELETE: not polled; fed by signal capture or enqueue()."
+                ),
+            },
+        ),
+        (
+            _("Filter"),
+            {
+                "fields": ("predicate",),
+                "description": _(
+                    "Notify only about rows that match. The filter is checked "
+                    "against the row as it is when the change is detected, not "
+                    'against its old values: with UPDATE, status = "paid" '
+                    "notifies on every change of a paid row, not only when it "
+                    "becomes paid. Comparisons with an empty (null) value are "
+                    "false; != and not in are true for them."
                 ),
             },
         ),
@@ -240,6 +255,10 @@ class TrackedTableAdmin(admin.ModelAdmin):
     @admin.display(description=_("Active"), boolean=True)
     def is_active_colored(self, obj: TrackedTable) -> bool:
         return obj.is_active
+
+    @admin.display(description=_("Filter"), boolean=True)
+    def has_filter(self, obj: TrackedTable) -> bool:
+        return bool(obj.predicate.strip())
 
     @admin.display(description=_("Model"))
     def model_display(self, obj: TrackedTable) -> str:

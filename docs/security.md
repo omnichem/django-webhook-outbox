@@ -39,6 +39,38 @@ Only trusted administrators should have `add_trackedtable` /
 for compatibility; `validate_template()` checks field paths but does not
 block methods.
 
+## Filters
+
+*1.2.* A tracked table's filter (`predicate`) is typed by staff, so it is
+input from the same trusted people as the templates, but it is treated as
+untrusted text anyway:
+
+- It is parsed by a small hand-written parser and compiled into a Django
+  `Q` object. Values reach the database as query parameters. There is no
+  SQL, no `eval`, and no part of the text becomes a Django lookup:
+  `__` is refused in names, so `name__regex` (ReDoS) or
+  `user__password__startswith` cannot be written.
+- Paths only follow forward foreign keys and one-to-one fields and end on a
+  concrete field. Methods and properties are never called (unlike template
+  placeholders).
+- Names matching `PREDICATE_DENY_FIELDS` (default `*password*`, `*token*`,
+  `*secret*`, `*api_key*`, case-insensitive) are refused on every model of
+  the path, before the field is looked up. Paths may not enter models of
+  `django.*` apps, so with Django's built-in `User`, `user.password`,
+  `user.is_superuser` and the like are out of reach; comparing the foreign
+  key itself (`user = 5`) works. A custom `AUTH_USER_MODEL` or a
+  third-party model is not covered by this: its `is_superuser`, `is_staff`,
+  `email`, or secret columns not named like the defaults (`key`, `hash`,
+  `otp_seed`, ...) can be reached unless you add them to
+  `PREDICATE_DENY_FIELDS`.
+- Length, nesting, number of comparisons and of `in` values are bounded;
+  there are no pattern operators.
+
+A filter is still a yes/no question about rows: someone who can edit tracked
+tables and read the receiver can learn whether rows with certain values
+exist. Keep `PREDICATE_DENY_FIELDS` in line with the sensitive columns of
+your models.
+
 ## SSRF: private addresses are allowed on purpose
 
 Webhook URLs only have to be absolute `http(s)` URLs. Private, loopback and

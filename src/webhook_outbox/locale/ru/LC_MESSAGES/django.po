@@ -239,3 +239,132 @@ msgstr "Данные, переданные источником события"
 
 msgid "Event"
 msgstr "Событие"
+
+msgid "Filter"
+msgstr "Фильтр"
+
+msgid "Notify only about rows that match. The filter is checked against the row as it is when the change is detected, not against its old values: with UPDATE, status = \"paid\" notifies on every change of a paid row, not only when it becomes paid. Comparisons with an empty (null) value are false; != and not in are true for them."
+msgstr "Уведомлять только о записях, которые подходят под фильтр. Фильтр проверяется по записи в том виде, в каком она была в момент обнаружения изменения, а не по её старым значениям: с UPDATE фильтр status = \"paid\" уведомляет о каждом изменении оплаченной записи, а не только о переходе в оплаченные. Сравнения с пустым (null) значением ложны; != и not in для него истинны."
+
+msgid "Optional. Only rows that match are notified, e.g. status = \"paid\" and total >= 100. Operators: = != < <= > >= in (...), not in (...), is null, is not null, and, or, not, parentheses. Strings in quotes, numbers, true, false. Foreign keys: company.country = \"DE\". Empty: every row."
+msgstr "Необязательно. Уведомления отправляются только для подходящих записей, например status = \"paid\" and total >= 100. Операторы: = != < <= > >= in (...), not in (...), is null, is not null, and, or, not, скобки. Строки в кавычках, числа, true, false. Внешние ключи: company.country = \"DE\". Пусто: все записи."
+
+msgid "%(message)s (at character %(position)d)"
+msgstr "%(message)s (символ %(position)d)"
+
+msgid "The number is too long."
+msgstr "Слишком длинное число."
+
+msgid "Invalid number."
+msgstr "Некорректное число."
+
+msgid "Invalid field name."
+msgstr "Некорректное имя поля."
+
+msgid "Field names cannot start with '_'."
+msgstr "Имя поля не может начинаться с «_»."
+
+msgid "Unexpected character %(char)r."
+msgstr "Неожиданный символ %(char)r."
+
+msgid "Invalid escape in a string: only \\\\, \\\" and \\' are allowed."
+msgstr "Недопустимое экранирование в строке: разрешены только \\\\, \\\" и \\'."
+
+msgid "Unterminated string."
+msgstr "Строка не закрыта."
+
+msgid "Unexpected %(token)s; expected 'and', 'or' or the end."
+msgstr "Неожиданно: %(token)s; ожидались and, or или конец фильтра."
+
+msgid "The filter is nested too deeply (at most %(max)d levels)."
+msgstr "Слишком глубокая вложенность фильтра (не более %(max)d уровней)."
+
+msgid "Expected ')'."
+msgstr "Ожидалась «)»."
+
+msgid "%(word)r is a reserved word, not a field name."
+msgstr "%(word)r — зарезервированное слово, а не имя поля."
+
+msgid "Expected a field name, got %(token)s."
+msgstr "Ожидалось имя поля, получено: %(token)s."
+
+msgid "Too many comparisons (at most %(max)d)."
+msgstr "Слишком много сравнений (не более %(max)d)."
+
+msgid "Expected 'null' after 'is'."
+msgstr "После is ожидалось null."
+
+msgid "Expected 'in' after 'not'."
+msgstr "После not ожидалось in."
+
+msgid "Expected '(' after 'in'."
+msgstr "После in ожидалась «(»."
+
+msgid "Too many values in 'in' (at most %(max)d)."
+msgstr "Слишком много значений в in (не более %(max)d)."
+
+msgid "Expected ',' or ')'."
+msgstr "Ожидалась «,» или «)»."
+
+msgid "Expected an operator (=, !=, <, <=, >, >=, in, is) after %(name)r."
+msgstr "После %(name)r ожидался оператор (=, !=, <, <=, >, >=, in, is)."
+
+msgid "Use 'is null' or 'is not null' to compare with null."
+msgstr "Для сравнения с null используйте is null или is not null."
+
+msgid "Expected a value (a string, a number, true or false), got %(token)s."
+msgstr "Ожидалось значение (строка, число, true или false), получено: %(token)s."
+
+msgid "the end of the filter"
+msgstr "конец фильтра"
+
+msgid "The filter must be text."
+msgstr "Фильтр должен быть текстом."
+
+msgid "The filter is too long (at most %(max)d characters)."
+msgstr "Фильтр слишком длинный (не более %(max)d символов)."
+
+msgid "%(path)r is too long: at most %(max)d names."
+msgstr "%(path)r слишком длинный путь: не более %(max)d имён."
+
+msgid "%(name)r: '__' is not allowed in field names."
+msgstr "%(name)r: «__» в именах полей запрещено."
+
+msgid "Field %(name)r cannot be used in a filter."
+msgstr "Поле %(name)r нельзя использовать в фильтре."
+
+msgid "%(model)s has no field %(name)r."
+msgstr "У %(model)s нет поля %(name)r."
+
+msgid "%(name)r cannot be used in a filter: only fields of the row and foreign keys are supported."
+msgstr "%(name)r нельзя использовать в фильтре: поддерживаются только поля записи и внешние ключи."
+
+msgid "%(name)r leads to %(model)s: models of django.* apps cannot be used in a filter."
+msgstr "%(name)r ведёт в %(model)s: модели приложений django.* нельзя использовать в фильтре."
+
+msgid "%(name)r is not a foreign key; nothing can follow it."
+msgstr "%(name)r не внешний ключ; после него ничего не может идти."
+
+msgid "%(path)r expects %(expected)s."
+msgstr "%(path)r: ожидается %(expected)s."
+
+msgid "a string in quotes"
+msgstr "строка в кавычках"
+
+msgid "true or false"
+msgstr "true или false"
+
+msgid "a UUID in quotes"
+msgstr "UUID в кавычках"
+
+msgid "a number"
+msgstr "число"
+
+msgid "a whole number"
+msgstr "целое число"
+
+msgid "%(path)r is a %(type)s, which cannot be used in a filter."
+msgstr "%(path)r имеет тип %(type)s, его нельзя использовать в фильтре."
+
+msgid "%(op)s only works on numbers; %(path)r is not a number."
+msgstr "%(op)s работает только с числами; %(path)r не число."

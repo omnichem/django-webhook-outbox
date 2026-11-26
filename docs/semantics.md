@@ -37,6 +37,7 @@ In short:
 | Custom event types | no | no | yes (`tracked_table=` needed) |
 | Atomic with your change | no (reads committed rows later) | yes | yes |
 | Message rendered from | the row at poll time | the instance at save time | the instance (or your `message`) at call time |
+| Filter (`predicate`, 1.2) checked on | the row at poll time, in the query | the instance at save time | the instance (a ref is loaded) at call time |
 | Cost | one query per tracked table and poll | one query per captured save/delete (+1 with `"fields"`) | one INSERT per call |
 
 **Which one to use:**
@@ -239,6 +240,65 @@ WEBHOOK_OUTBOX = {
   [blind spots](#blind-spots) above apply.
 - webhook_outbox's own models cannot be captured (system check E008).
 
+## Filters
+
+*1.2.* A tracked table can have a filter (`predicate`): a boolean
+expression over the fields of the tracked model. Only rows that match it
+produce events, whichever way the event is produced.
+
+```text
+status = "paid" and total >= 100
+company.country in ("DE", "AT") and not archived = true
+coupon_code is null
+```
+
+| | |
+| --- | --- |
+| Comparisons | `=` (or `==`), `!=`, `<`, `<=`, `>`, `>=`, `in (...)`, `not in (...)`, `is null`, `is not null` |
+| Logic | `and`, `or`, `not`, parentheses. `not` binds tightest, then `and`, then `or`. Keywords are case-insensitive. |
+| Values | strings in `"..."` or `'...'` (escapes `\\`, `\"`, `\'`), integers and decimals (`-12`, `0.5`, no exponent), `true`, `false` |
+| Fields | a field of the model, or `relation.field` along forward foreign keys / one-to-one fields, at most 3 names. A foreign key on its own compares its primary key: `company = 5`, `company_id = 5`. |
+| Field types | text (`CharField`, `TextField` and subclasses), integers, `FloatField`, `DecimalField`, `BooleanField`, `UUIDField` (a string), foreign keys. Dates, JSON, files and the like are refused. |
+| Type rules | the value must fit the field: `count = "5"`, `name = 5` and `flag = 1` are errors. `<`, `<=`, `>`, `>=` only work on numbers (string ordering depends on the database collation). Compare with null only through `is null` / `is not null`. |
+
+- **When it is checked.** Polling adds the filter to the detection query,
+  so it sees the row as it is at poll time. Signal capture checks the
+  instance at `save()` / `delete()`. `enqueue()` checks the instance as you
+  pass it (a `(model, pk)` ref is loaded; a ref to a row that is gone raises
+  `ValueError`, pass the instance instead).
+- **State, not transition.** The filter knows the current values, not the
+  old ones. An UPDATE rule with `status = "paid"` reports every change of a
+  paid row, not only the moment it became paid. To report a transition
+  once, track an audit/history model with INSERT (`to_state = "paid"`), use
+  `enqueue()` at the transition, or keep the dedup window. Polling also
+  misses a row that matched only between two polls
+  (`test_limitation_filter_sees_the_row_at_poll_time`).
+- **NULL.** Like Django's `exclude()`: a comparison with a missing value
+  (a null column, or a null foreign key on the way) is false; its negation
+  (`!=`, `not in`, `not (...)`) is true. `company.type.name != "LLC"`
+  therefore matches rows without a company type. Polling and the in-memory
+  check give the same result for every row; the test suite runs both on the
+  same data on SQLite and PostgreSQL.
+- **Text comparison** is the database's `=`: case-sensitive on PostgreSQL
+  and SQLite, but it follows the column collation on MySQL/MariaDB, where
+  the in-memory check (always case-sensitive) may differ.
+- **Invalid filters.** The admin validates the filter on save. A filter
+  that became invalid later (a field was removed) is reported by the system
+  check `webhook_outbox.W014`. The poller then skips the tracked table
+  **without moving its cursor**, so the changes made meanwhile are reported
+  once the filter is fixed. `enqueue()` raises `PredicateError` (a
+  `ValueError`), and signal capture logs the error and queues nothing for
+  that rule (the save itself goes through).
+- **Several rules per channel.** Since 1.2 a model, event type and channel
+  can have several tracked tables, e.g. one per filter. `enqueue()` without
+  `tracked_table=` then finds several active rules and raises
+  `TrackedTableLookupError`; pass `tracked_table=`. Each rule has its own
+  cursor and dedup window, so a row matching two rules gives two events.
+  Nothing stops two rules with the same filter (or two without a filter)
+  on one channel either; they send every event twice.
+- What a filter may reach is restricted, see
+  [security.md](security.md#filters).
+
 ## Delivery rules
 
 - One pass takes up to `DELIVERY_BATCH_SIZE` (100) entries with
@@ -304,7 +364,8 @@ The numbering is the one of 1.0. Items marked *fixed* are fixed in 1.1.
      without changes still bumps `updated_at` and gives an UPDATE event.
 5. **No old/new values in polling.** The poller sends the rendered message
    with `changes: null` (envelope v2). Update rules cannot be limited to
-   certain fields. Old/new values come from `enqueue(changes=...)` or from
+   changes of certain fields: a [filter](#filters) (1.2) narrows them by the
+   current values of the row, not by what changed. Old/new values come from `enqueue(changes=...)` or from
    signal capture with `"fields"`, over envelope v2.
 6. **Event id.** *Fixed in 1.1, opt-in:* every entry has a stable
    `event_id`, sent in envelope v2 and, with `ENVELOPE_V1_EVENT_ID`, in v1.

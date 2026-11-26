@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from webhook_outbox.conf import get_setting
 from webhook_outbox.models import NotificationOutbox, TrackedTable
+from webhook_outbox.services.predicate import PredicateError
 from webhook_outbox.services.template import render_template
 
 logger = logging.getLogger(__name__)
@@ -41,14 +42,30 @@ class TablePoller:
 
     The rows are read through the model's default ``objects`` manager, so a
     manager that filters rows (e.g. hides soft-deleted ones) filters events.
+    The tracked table's filter (``predicate``, 1.2) is applied in the same
+    query: rows that do not match are not detected.
 
     ``poll_table()`` is the entry point that writes outbox entries; it uses
     ``detect()`` and ``next_cursor()`` inside one transaction.
     """
 
+    _UNSET = object()
+
     def __init__(self, tracked_table: TrackedTable):
         self.tracked_table = tracked_table
         self.model_class = tracked_table.get_model_class()
+        self._predicate = self._UNSET
+
+    @property
+    def predicate(self):
+        """The compiled filter or None. Raises PredicateError when invalid."""
+        if self._predicate is self._UNSET:
+            self._predicate = self.tracked_table.get_predicate()
+        return self._predicate
+
+    def _filtered(self, queryset):
+        predicate = self.predicate
+        return queryset if predicate is None else queryset.filter(predicate.as_q())
 
     def _has_required_fields(self) -> bool:
         """Check if the model has the required timestamp fields."""
@@ -83,6 +100,17 @@ class TablePoller:
         if not self._has_required_fields():
             logger.error(
                 f"Model {self.tracked_table.model_path} missing required timestamp fields"
+            )
+            return False
+
+        try:
+            self.predicate  # noqa: B018 - compiles and caches the filter
+        except PredicateError as e:
+            # The cursor does not move: once the filter is fixed, the next
+            # poll reports the changes made in the meantime.
+            logger.error(
+                f"Not polling {self.tracked_table} ({self.tracked_table.model_path}): "
+                f"invalid filter: {e}"
             )
             return False
 
@@ -147,7 +175,7 @@ class TablePoller:
 
     def _detect_inserts(self, since) -> list[DetectedChange]:
         """Detect new records created since the given timestamp."""
-        queryset = self.model_class.objects.filter(created_at__gt=since)
+        queryset = self._filtered(self.model_class.objects.filter(created_at__gt=since))
 
         changes = []
         for instance in queryset:
@@ -179,9 +207,11 @@ class TablePoller:
         condition = Q(created_at__lt=since)
         if get_setting("POLL_OVERLAP_SECONDS") > 0:
             condition |= Q(updated_at__gt=F("created_at") + CREATION_TOLERANCE)
-        queryset = self.model_class.objects.filter(
-            condition,
-            updated_at__gt=since,
+        queryset = self._filtered(
+            self.model_class.objects.filter(
+                condition,
+                updated_at__gt=since,
+            )
         )
 
         changes = []

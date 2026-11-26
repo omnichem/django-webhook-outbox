@@ -4,12 +4,43 @@
 
 - Versions follow semantic versioning and are taken from git tags (`X.Y.Z`).
 - Within 1.x envelope v1 stays the same, and new migrations only add
-  things (1.1 adds nullable columns). Documented semantics change only as
+  things (1.1 adds nullable columns) or relax constraints (1.2 adds a
+  column with an empty default and drops a unique constraint). Documented semantics change only as
   described below and in the changelog.
 - Fixes for the [known limitations](semantics.md#known-limitations) change
   observable behaviour. They are opt-in or come with a major version, unless
   they fix lost events without changing the envelope. The changelog says
   so.
+
+## Upgrading from 1.1 to 1.2
+
+```console
+pip install -U django-webhook-outbox
+python manage.py migrate webhook_outbox
+```
+
+Migration `0003_1_2_predicate`:
+
+- adds `TrackedTable.predicate` (text, `''` for existing rules: they keep
+  their behaviour exactly);
+- drops the unique constraint on `(content_type, event_type, channel)`, so
+  several rules (with different filters) can send the same model's events
+  to one channel.
+
+Nothing else changes for rules without a filter: detection, the envelope,
+`enqueue()` and signal capture behave as in 1.1. Two things to know:
+
+- **`enqueue()` lookups can become ambiguous.** Once you add a second active
+  rule for the same model, event type and channel, `enqueue()` without
+  `tracked_table=` raises `TrackedTableLookupError` (as it already did for
+  several channels without `channel=`). Pass `tracked_table=` in that code.
+- **Rolling back to 1.1** (`migrate webhook_outbox 0002`) re-creates the
+  unique constraint and fails while two rules share (model, event type,
+  channel). Delete or merge them first. The filters are dropped with the
+  column.
+
+Filters are described in [semantics.md](semantics.md#filters); what they may
+reach in [security.md](security.md#filters).
 
 ## Upgrading from 1.0 to 1.1
 

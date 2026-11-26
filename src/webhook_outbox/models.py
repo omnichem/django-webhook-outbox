@@ -1,6 +1,7 @@
 import uuid
 
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -96,8 +97,19 @@ class TrackedTable(TimeStampedModel):
         verbose_name=_("Event Type"),
     )
 
-    # UPDATE events notify on any update to the record (no per-field filter
-    # in 1.0, see docs/semantics.md).
+    # Without a predicate, UPDATE events notify on any update to the record.
+    predicate = models.TextField(
+        blank=True,
+        default="",
+        verbose_name=_("Filter"),
+        help_text=_(
+            "Optional. Only rows that match are notified, e.g. "
+            'status = "paid" and total >= 100. Operators: = != < <= > >= '
+            "in (...), not in (...), is null, is not null, and, or, not, "
+            "parentheses. Strings in quotes, numbers, true, false. "
+            'Foreign keys: company.country = "DE". Empty: every row.'
+        ),
+    )
 
     message_template = models.TextField(
         verbose_name=_("Message Template"),
@@ -140,7 +152,8 @@ class TrackedTable(TimeStampedModel):
         verbose_name = _("Tracked Table")
         verbose_name_plural = _("Tracked Tables")
         ordering = ["content_type__app_label", "content_type__model"]
-        unique_together = [("content_type", "event_type", "channel")]
+        # 1.2: no unique (model, event, channel) any more, so that rules with
+        # different filters can send to the same channel.
 
     def __str__(self):
         model_name = (
@@ -149,6 +162,34 @@ class TrackedTable(TimeStampedModel):
             else "Unknown"
         )
         return f"{self.name} ({model_name} - {self.get_event_type_display()})"
+
+    def clean(self):
+        super().clean()
+        if not self.predicate or not self.content_type_id:
+            return
+        model = self.get_model_class()
+        if model is None:
+            return
+        from webhook_outbox.services.predicate import PredicateError, compile_predicate
+
+        try:
+            compile_predicate(self.predicate, model)
+        except PredicateError as e:
+            raise ValidationError({"predicate": str(e)}) from None
+
+    def get_predicate(self):
+        """
+        The compiled filter, or None when there is none. Raises
+        ``PredicateError`` when it is invalid (or the model is gone).
+        """
+        from webhook_outbox.services.predicate import PredicateError, compile_predicate
+
+        if not self.predicate or not self.predicate.strip():
+            return None
+        model = self.get_model_class()
+        if model is None:
+            raise PredicateError(f"Model {self.model_path} is not installed.")
+        return compile_predicate(self.predicate, model)
 
     def get_model_class(self):
         """

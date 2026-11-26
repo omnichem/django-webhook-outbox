@@ -6,6 +6,44 @@ uses [semantic versioning](https://semver.org/). Versions come from git tags.
 
 ## [Unreleased]
 
+Run `migrate webhook_outbox` after upgrading; see
+[docs/upgrading.md](docs/upgrading.md#upgrading-from-11-to-12).
+
+### Added
+
+- **Tracked table filters** (`TrackedTable.predicate`, *Filter* in the
+  admin). A boolean expression over the tracked model's fields, e.g.
+  `status = "paid" and company.country in ("DE", "AT")`: only matching rows
+  produce events. Comparisons `= != < <= > >=`, `in`, `not in`, `is null`,
+  `is not null`; `and`, `or`, `not`, parentheses; string, number, `true` /
+  `false` literals; forward foreign keys up to 3 names. Polling applies it
+  in the detection query, signal capture and `enqueue()` check the instance
+  in memory, with the same result. See
+  [docs/semantics.md](docs/semantics.md#filters).
+- The filter is parsed by the package and compiled to a Django `Q`: no SQL,
+  no `eval`, no lookups from the text (`__` refused), typed literals, size
+  limits, no access to `django.*` models, and the new setting
+  `PREDICATE_DENY_FIELDS` (default `*password*`, `*token*`, `*secret*`,
+  `*api_key*`). See [docs/security.md](docs/security.md#filters).
+- `webhook_outbox.services.predicate`: `compile_predicate()`, `Predicate`
+  (`as_q()`, `matches()`), `PredicateError`; `TrackedTable.get_predicate()`.
+- System checks `webhook_outbox.E009` (`PREDICATE_DENY_FIELDS` is not a
+  list of strings) and `webhook_outbox.W014` (a stored filter is invalid).
+- Migration `0003_1_2_predicate`: the `predicate` column (`''` for existing
+  rules).
+- Russian translations of the new admin texts and filter errors.
+
+### Changed
+
+- **Several tracked tables per (model, event type, channel)** are allowed:
+  migration `0003_1_2_predicate` drops that unique constraint. `enqueue()`
+  without `tracked_table=` raises `TrackedTableLookupError` when several
+  active rules match, as it already did across channels.
+- A tracked table with an invalid filter is skipped by the poller without
+  moving its cursor, and logged on every poll.
+- `enqueue()` returns `None` for a row that does not match the filter, and
+  raises `PredicateError` (a `ValueError`) for an invalid filter.
+
 ## [1.1.0] - 2026-11-24
 
 Run `migrate webhook_outbox` after upgrading; see
