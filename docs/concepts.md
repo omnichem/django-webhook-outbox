@@ -24,8 +24,12 @@ You can deactivate a channel with `is_active`.
   edit it. Since 1.1 it trails the last poll by `POLL_OVERLAP_SECONDS`.
 - `dedup_window_seconds` (optional): overrides `DEDUP_WINDOW_SECONDS` for
   this rule; `0` turns the window off.
+- `predicate` (optional, 1.2, *Filter* in the admin): only rows that match
+  produce events, e.g. `status = "paid" and total >= 100`. See
+  [semantics.md](semantics.md#filters).
 
-Each combination of (model, event type, channel) can exist only once.
+Up to 1.1 each combination of (model, event type, channel) could exist only
+once. Since 1.2 there can be several, typically with different filters.
 
 **NotificationOutbox** is one notification waiting to be sent, or already
 sent. It holds the rendered `message`, the source (`source_model`,

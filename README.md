@@ -12,6 +12,9 @@ retries failures.
 
 - No database triggers: any model with `created_at` / `updated_at` fields
   can be tracked by polling, including models of third-party apps.
+- An optional filter per rule, e.g. `status = "paid" and total >= 100`,
+  so only matching rows are notified. It is parsed by the package and
+  compiled to a Django query, never to SQL text.
 - When polling is not enough (deletes, bulk updates, every state change,
   old/new values), queue events yourself with `webhook_outbox.enqueue()` in
   the transaction of the change, or turn on signal capture for selected

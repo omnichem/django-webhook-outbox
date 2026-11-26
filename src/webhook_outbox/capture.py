@@ -21,6 +21,8 @@ Without ``"fields"``, ``changes`` is null.
 A create queues an ``insert`` event for every active INSERT tracked table of
 the model, an update an ``update`` event for every active UPDATE tracked
 table, a delete a ``delete`` event for every active DELETE tracked table.
+A tracked table with a filter (``predicate``) only gets the event when the
+instance, as it is in memory, matches it.
 
 Capture is best-effort: it does not see ``QuerySet.update()``,
 ``bulk_create()``, ``bulk_update()`` or raw SQL, and a failure to queue is
@@ -239,7 +241,7 @@ def _post_delete(sender, instance, **kwargs):
 def _capture(model, instance, event_type, changes, *, use_timestamp=True) -> None:
     from webhook_outbox.models import TrackedTable
     from webhook_outbox.services.channels.base import get_envelope_version
-    from webhook_outbox.services.enqueue import create_entry
+    from webhook_outbox.services.enqueue import create_entry, matches_filter
 
     try:
         # A savepoint: a failure here must not break the caller's transaction.
@@ -258,7 +260,16 @@ def _capture(model, instance, event_type, changes, *, use_timestamp=True) -> Non
 
     for tracked in tracked_tables:
         try:
+            # The savepoint also covers the filter: it may load related rows.
             with transaction.atomic():
+                if not matches_filter(
+                    tracked, model=model, pk=instance.pk, instance=instance
+                ):
+                    logger.debug(
+                        f"Signal capture: {tracked.model_path}#{instance.pk} does "
+                        f"not match the filter of {tracked.name!r}"
+                    )
+                    continue
                 create_entry(
                     tracked,
                     model=model,

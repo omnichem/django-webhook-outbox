@@ -71,13 +71,21 @@ def enqueue(
     active tracked table, else ``TrackedTableLookupError`` is raised; loop
     over tracked tables and pass ``tracked_table=`` to fan out.
 
+    The tracked table's filter (``predicate``) applies here too. It is
+    evaluated on the instance as it is in memory; a ref is loaded from the
+    database for that.
+
     Returns:
         The new NotificationOutbox entry, or None when the tracked table or
-        its channel is inactive (nothing is queued then).
+        its channel is inactive, or the row does not match the tracked
+        table's filter (nothing is queued then).
 
     Raises:
         TrackedTableLookupError: no tracked table, or several active ones.
-        ValueError: invalid arguments, e.g. ``changes`` for a v1 channel.
+        ValueError: invalid arguments, e.g. ``changes`` for a v1 channel; a
+            ref to a row that is gone while the tracked table has a filter.
+        PredicateError: the tracked table's filter is invalid (a
+            ``ValueError`` subclass).
         TypeError: ``instance_or_ref`` is neither an instance nor a ref.
 
     The dedup window does not apply: every call queues an event. For
@@ -96,6 +104,13 @@ def enqueue(
         logger.info(
             f"Not queueing {event_type!r} for {tracked.model_path}#{pk}: "
             f"tracked table {tracked.name!r} or its channel is inactive"
+        )
+        return None
+
+    if not matches_filter(tracked, model=model, pk=pk, instance=instance):
+        logger.info(
+            f"Not queueing {event_type!r} for {tracked.model_path}#{pk}: "
+            f"the row does not match the filter of {tracked.name!r}"
         )
         return None
 
@@ -160,6 +175,32 @@ def create_entry(
     )
     _schedule_hook(entry.pk)
     return entry
+
+
+def matches_filter(
+    tracked: TrackedTable,
+    *,
+    model: type[models.Model],
+    pk: Any,
+    instance: models.Model | None,
+) -> bool:
+    """
+    Whether the row passes ``tracked``'s filter (True without a filter).
+    Raises PredicateError for an invalid filter, ValueError when a ref has to
+    be loaded and the row is gone.
+    """
+    predicate = tracked.get_predicate()
+    if predicate is None:
+        return True
+    if instance is None:
+        instance = model._base_manager.filter(pk=pk).first()
+        if instance is None:
+            raise ValueError(
+                f"Cannot check the filter of {tracked.name!r}: "
+                f"{tracked.model_path}#{pk} does not exist. Pass the instance "
+                "(it is checked as it is in memory)."
+            )
+    return predicate.matches(instance)
 
 
 # --- validation -----------------------------------------------------------------

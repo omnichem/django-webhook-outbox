@@ -73,6 +73,10 @@ DEFAULTS: dict[str, Any] = {
     # Dotted path to a callable(outbox_id) called on commit of the
     # transaction in which enqueue() (or signal capture) queued an entry.
     "ENQUEUE_HOOK": None,
+    # --- 1.2 ---------------------------------------------------------------
+    # Field names (fnmatch patterns, case-insensitive) that tracked table
+    # filters may not use, on any model along the path.
+    "PREDICATE_DENY_FIELDS": ["*password*", "*token*", "*secret*", "*api_key*"],
 }
 
 LEGACY_SETTINGS: dict[str, str] = {

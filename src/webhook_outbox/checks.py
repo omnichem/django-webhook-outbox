@@ -15,6 +15,7 @@ Configuration checks (always run):
   ENVELOPE_V1_EVENT_ID is not a bool
 * webhook_outbox.E008 - SIGNAL_CAPTURE is invalid (unknown model or field,
   webhook_outbox's own models, wrong shape)
+* webhook_outbox.E009 - PREDICATE_DENY_FIELDS is not a list of strings
 
 Database checks (``manage.py check --database default``, and ``migrate``).
 They only warn: a stale row must not block deployments.
@@ -26,6 +27,8 @@ They only warn: a stale row must not block deployments.
   rules are not polled and need none)
 * webhook_outbox.W013 - a tracked table tracks webhook_outbox's own models
   (self-tracking feedback loop)
+* webhook_outbox.W014 - a tracked table's filter is invalid (the poller skips
+  the table and keeps its cursor)
 """
 
 from django.core.checks import Error, Tags, Warning, register
@@ -143,6 +146,18 @@ def check_settings(app_configs=None, **kwargs):
 
     errors.extend(_check_envelope_settings())
 
+    deny = get_setting("PREDICATE_DENY_FIELDS")
+    if not isinstance(deny, (list, tuple)) or not all(
+        isinstance(item, str) for item in deny
+    ):
+        errors.append(
+            Error(
+                f"{SETTING_NAME}['PREDICATE_DENY_FIELDS'] must be a list of "
+                "field name patterns.",
+                id="webhook_outbox.E009",
+            )
+        )
+
     from .capture import get_capture_config
 
     _config, capture_errors = get_capture_config()
@@ -221,16 +236,59 @@ def check_database(app_configs=None, databases=None, **kwargs):
                 )
             )
 
+        # predicate (0003) is only read once that migration has run.
+        has_predicate = _has_predicate_column(alias)
+        columns = ["pk", "name", "event_type", "content_type"]
+        if has_predicate:
+            columns.append("predicate")
         tracked_tables = (
             TrackedTable.objects.using(alias)
-            .only("pk", "name", "event_type", "content_type")
+            .only(*columns)
             .select_related("content_type")
             .order_by("pk")
         )
         for tracked in tracked_tables:
             errors.extend(_check_tracked_table(tracked))
+            if has_predicate:
+                errors.extend(_check_predicate(tracked))
 
     return errors
+
+
+PREDICATE_MIGRATION = ("webhook_outbox", "0003_1_2_predicate")
+
+
+def _has_predicate_column(alias: str) -> bool:
+    from django.db.migrations.recorder import MigrationRecorder
+
+    try:
+        applied = MigrationRecorder(connections[alias]).applied_migrations()
+    except DatabaseError:
+        return False
+    return PREDICATE_MIGRATION in applied
+
+
+def _check_predicate(tracked) -> list:
+    from .services.predicate import PredicateError
+
+    if not tracked.predicate or tracked.content_type.app_label == SELF_APP_LABEL:
+        return []
+    if tracked.content_type.model_class() is None:
+        return []  # W011
+    try:
+        tracked.get_predicate()
+    except PredicateError as e:
+        return [
+            Warning(
+                f"Tracked table #{tracked.pk} ({tracked.name!r}) has an invalid "
+                f"filter: {e}. The poller skips it and keeps its cursor; "
+                "enqueue() raises and signal capture queues nothing for it.",
+                hint="Fix or clear the filter in the admin.",
+                obj=tracked,
+                id="webhook_outbox.W014",
+            )
+        ]
+    return []
 
 
 def _check_tracked_table(tracked) -> list:

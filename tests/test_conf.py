@@ -21,6 +21,7 @@ def test_defaults():
         "ENVELOPE_V1_EVENT_ID": False,
         "SIGNAL_CAPTURE": {},
         "ENQUEUE_HOOK": None,
+        "PREDICATE_DENY_FIELDS": ["*password*", "*token*", "*secret*", "*api_key*"],
     }
     for key, value in DEFAULTS.items():
         assert get_setting(key) == value

@@ -1,7 +1,6 @@
 """Ported from the original implementation, re-pointed to the test models."""
 
 from django.contrib.contenttypes.models import ContentType
-from django.db import IntegrityError
 from django.test import TestCase
 
 from tests.testapp.models import RegistrationRequest
@@ -92,11 +91,13 @@ class TrackedTableModelTest(TestCase):
         self.assertIsNotNone(model_class)
         self.assertEqual(model_class.__name__, "RegistrationRequest")
 
-    def test_unique_constraint(self):
+    def test_same_model_event_and_channel_allowed_since_1_2(self):
+        """Rules with different filters may share (model, event, channel)."""
         self._create(name="First")
+        second = self._create(name="Second", predicate='status = "approved"')
 
-        with self.assertRaises(IntegrityError):
-            self._create(name="Duplicate", message_template="Test 2")
+        self.assertEqual(TrackedTable.objects.count(), 2)
+        self.assertEqual(second.predicate, 'status = "approved"')
 
     def test_str_representation(self):
         tracked = self._create(name="Test Rule")
@@ -191,11 +192,8 @@ class SchemaTest(TestCase):
     def test_event_types(self):
         self.assertEqual(TrackedTable.EventType.values, ["insert", "update", "delete"])
 
-    def test_unique_together(self):
-        self.assertEqual(
-            TrackedTable._meta.unique_together,
-            (("content_type", "event_type", "channel"),),
-        )
+    def test_no_unique_together_since_1_2(self):
+        self.assertEqual(TrackedTable._meta.unique_together, ())
 
     def test_outbox_index(self):
         self.assertEqual(
@@ -238,6 +236,7 @@ class SchemaTest(TestCase):
                 "name",
                 "content_type",
                 "event_type",
+                "predicate",
                 "message_template",
                 "channel",
                 "last_polled_at",

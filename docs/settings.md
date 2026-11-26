@@ -31,6 +31,7 @@ warning `webhook_outbox.W001`.
 | `ENVELOPE_V1_EVENT_ID` | `False` | – | *1.1.* Add `"event_id"` as a seventh key to envelope v1. |
 | `SIGNAL_CAPTURE` | `{}` | – | *1.1.* Models whose `post_save` / `post_delete` queue events: `["shop.order"]`, or `{"shop.order": {"fields": ["status"]}}` to also send the old/new values of those fields (envelope v2). Empty: off. See [semantics.md](semantics.md#signal-capture). |
 | `ENQUEUE_HOOK` | `None` | – | *1.1.* Dotted path to a `callable(outbox_id)` called on commit of the transaction in which `enqueue()` or signal capture queued an entry, e.g. `"webhook_outbox.contrib.celery.tasks.enqueue_single_notification"`. If it raises, the error is logged and the entry stays pending. |
+| `PREDICATE_DENY_FIELDS` | `["*password*", "*token*", "*secret*", "*api_key*"]` | – | *1.2.* Field names (`fnmatch` patterns, case-insensitive) that tracked table filters may not use, on any model along the path. See [security.md](security.md#filters). |
 
 ## Precedence
 
@@ -60,10 +61,12 @@ used to build the Celery beat schedule; they are not read by the package.
 | `webhook_outbox.E006` | a numeric setting is not a number of the right type or is out of range: `MAX_RETRIES` and `DELIVERY_BATCH_SIZE` integers >= 1, `DEDUP_WINDOW_SECONDS` and `POLL_OVERLAP_SECONDS` integers >= 0, `WEBHOOK_TIMEOUT`, `POLL_INTERVAL` and `SEND_INTERVAL` numbers > 0 (strings, e.g. read from the environment, are rejected) |
 | `webhook_outbox.E007` | `ENVELOPE_VERSION` is not `1` or `2`, or `ENVELOPE_V1_EVENT_ID` is not a bool |
 | `webhook_outbox.E008` | `SIGNAL_CAPTURE` names an unknown model or field, a webhook_outbox model, or has the wrong shape |
+| `webhook_outbox.E009` | `PREDICATE_DENY_FIELDS` is not a list of strings |
 | `webhook_outbox.W010` | a channel row uses a channel type with no registered class (database check) |
 | `webhook_outbox.W011` | a tracked table points to a model that is not installed (database check) |
 | `webhook_outbox.W012` | a tracked model lacks `created_at` / `updated_at` for its event type (database check; DELETE rules are not polled and need neither) |
 | `webhook_outbox.W013` | a tracked table tracks a webhook_outbox model, i.e. self-tracking (database check) |
+| `webhook_outbox.W014` | a tracked table's filter is invalid, e.g. it names a field that was removed; the poller skips the table and keeps its cursor (database check, after migration `0003_1_2_predicate`) |
 
 Database checks run with `manage.py check --database default` and during
 `migrate`. They only warn, so a stale row can never block a deployment.
