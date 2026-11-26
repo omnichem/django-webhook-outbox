@@ -249,7 +249,7 @@ produce events, whichever way the event is produced.
 ```text
 status = "paid" and total >= 100
 company.country in ("DE", "AT") and not archived = true
-cancelled_at is null
+coupon_code is null
 ```
 
 | | |
@@ -294,6 +294,8 @@ cancelled_at is null
   `tracked_table=` then finds several active rules and raises
   `TrackedTableLookupError`; pass `tracked_table=`. Each rule has its own
   cursor and dedup window, so a row matching two rules gives two events.
+  Nothing stops two rules with the same filter (or two without a filter)
+  on one channel either; they send every event twice.
 - What a filter may reach is restricted, see
   [security.md](security.md#filters).
 

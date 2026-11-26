@@ -1,6 +1,7 @@
 """Tracked table filters: TrackedTable.predicate (1.2)."""
 
 import logging
+import random
 import uuid
 from datetime import timedelta
 
@@ -16,6 +17,7 @@ from django.utils import timezone
 from tests.factories import (
     create_channel,
     create_company,
+    create_organization_type,
     create_person,
     create_request,
     create_tracked_table,
@@ -291,6 +293,17 @@ AGREEMENT_CASES = [
     ('company.address = ""', [2, 3]),
     ('company.company_name = "Beta" and user.email = "bob@example.com"', [3]),
     ('status = "x\' OR 1=1 --"', []),
+    # A "not" over a compound condition on a nullable path (rows 2 and 3 have
+    # no company type): SQL must not turn NOT (NULL AND NULL) into "no match".
+    (
+        'not (company.company_type != 999999 and company.company_type.name = "LLC")',
+        [2, 3],
+    ),
+    (
+        '(company.company_type.name is null and company.company_type.name = "LLC")'
+        ' or not (company.company_type.name = "LLC")',
+        [2, 3],
+    ),
 ]
 
 
@@ -311,6 +324,62 @@ def test_database_and_python_agree(requests_set, text, expected):
 
     assert in_database == expected_pks
     assert in_python == expected_pks
+
+
+FUZZ_ATOMS = [
+    'status = "approved"',
+    'status != "new"',
+    'status in ("new", "x")',
+    'status not in ("approved")',
+    "processed = true",
+    "processed != false",
+    'company.company_type.name = "LLC"',
+    'company.company_type.name != "JSC"',
+    'company.company_type.name in ("LLC", "JSC")',
+    'company.company_type.name not in ("JSC")',
+    "company.company_type.name is null",
+    "company.company_type is not null",
+    "company.company_type != 999999",
+    "company.company_type.id > 0",
+    "company.company_type.id <= 999999",
+    'company.address = ""',
+    'user.email = "bob@example.com"',
+]
+
+
+def _random_filter(rng, depth):
+    if depth == 0 or rng.random() < 0.3:
+        text = rng.choice(FUZZ_ATOMS)
+    else:
+        items = [_random_filter(rng, depth - 1) for _ in range(rng.randint(2, 3))]
+        text = "(" + f" {rng.choice(['and', 'or'])} ".join(items) + ")"
+    return f"not {text}" if rng.random() < 0.4 else text
+
+
+@pytest.mark.django_db
+def test_database_and_python_agree_on_random_filters(requests_set):
+    create_request(
+        create_company("Gamma", "3", company_type=create_organization_type("JSC")),
+        create_person("carol@example.com"),
+        status="approved",
+    )
+    rows = list(
+        RegistrationRequest.objects.select_related("company__company_type", "user")
+    )
+    rng = random.Random(20261126)
+    mismatches = []
+    for _ in range(2000):
+        text = _random_filter(rng, rng.randint(1, 3))
+        predicate = compile_request(text)
+        in_database = set(
+            RegistrationRequest.objects.filter(predicate.as_q()).values_list(
+                "pk", flat=True
+            )
+        )
+        in_python = {row.pk for row in rows if predicate.matches(row)}
+        if in_database != in_python:
+            mismatches.append(text)
+    assert mismatches == []
 
 
 @pytest.mark.django_db

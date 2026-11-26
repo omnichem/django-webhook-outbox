@@ -56,8 +56,13 @@ untrusted text anyway:
 - Names matching `PREDICATE_DENY_FIELDS` (default `*password*`, `*token*`,
   `*secret*`, `*api_key*`, case-insensitive) are refused on every model of
   the path, before the field is looked up. Paths may not enter models of
-  `django.*` apps, so `user.password`, `user.is_superuser` and the like
-  are out of reach; comparing the foreign key itself (`user = 5`) works.
+  `django.*` apps, so with Django's built-in `User`, `user.password`,
+  `user.is_superuser` and the like are out of reach; comparing the foreign
+  key itself (`user = 5`) works. A custom `AUTH_USER_MODEL` or a
+  third-party model is not covered by this: its `is_superuser`, `is_staff`,
+  `email`, or secret columns not named like the defaults (`key`, `hash`,
+  `otp_seed`, ...) can be reached unless you add them to
+  `PREDICATE_DENY_FIELDS`.
 - Length, nesting, number of comparisons and of `in` values are bounded;
   there are no pattern operators.
 

@@ -6,7 +6,7 @@ An event is queued only for rows that match it::
 
     status = "paid" and total >= 100
     company.country in ("DE", "AT") and not processed = true
-    archived_at is null
+    company.company_type is null
 
 Grammar (keywords are case-insensitive)::
 
@@ -43,8 +43,10 @@ The same filter is evaluated in two ways that agree on every row:
 * ``Predicate.as_q()`` for the poller (the rows are filtered in the query);
 * ``Predicate.matches(instance)`` for ``enqueue()`` and signal capture.
 
-NULL follows Django's ``exclude()``: a comparison with a missing value is
-false, and its negation (``!=``, ``not in``, ``not (...)``) is true.
+NULL: a comparison with a missing value is false, and its negation (``!=``,
+``not in``, ``not (...)``) is true. ``as_q()`` pushes every ``not`` down to the
+comparisons and adds ``is null`` to the negated ones, so SQL's three-valued
+logic gives the same result.
 """
 
 import fnmatch
@@ -561,34 +563,38 @@ def _resolve(node, model):
 # --- evaluation -----------------------------------------------------------------
 
 
-def _check_q(check: _Check) -> Q:
+def _check_q(check: _Check, negated: bool) -> Q:
+    # A positive comparison with SQL NULL is false, as in Python. A negated one
+    # adds "or is null" explicitly instead of relying on Django's exclude().
     op, lookup = check.op, check.lookup
+    if op in ("is null", "is not null"):
+        return Q(**{f"{lookup}__isnull": (op == "is null") != negated})
+    if op in ("!=", "not in"):
+        op, negated = ("=" if op == "!=" else "in"), not negated
     if op == "=":
-        return Q(**{lookup: check.values[0]})
-    if op == "!=":
-        return ~Q(**{lookup: check.values[0]})
-    if op in ORDERING_LOOKUPS:
-        return Q(**{f"{lookup}__{ORDERING_LOOKUPS[op]}": check.values[0]})
-    if op == "in":
-        return Q(**{f"{lookup}__in": list(check.values)})
-    if op == "not in":
-        return ~Q(**{f"{lookup}__in": list(check.values)})
-    if op == "is null":
-        return Q(**{f"{lookup}__isnull": True})
-    return Q(**{f"{lookup}__isnull": False})
+        q = Q(**{lookup: check.values[0]})
+    elif op == "in":
+        q = Q(**{f"{lookup}__in": list(check.values)})
+    else:
+        q = Q(**{f"{lookup}__{ORDERING_LOOKUPS[op]}": check.values[0]})
+    if negated:
+        return ~q | Q(**{f"{lookup}__isnull": True})
+    return q
 
 
-def _to_q(node) -> Q:
+def _to_q(node, negated: bool = False) -> Q:
+    # "not" is pushed down to the comparisons (De Morgan), so no NOT ever
+    # covers a compound condition, where SQL NULL would make it unknown.
     if isinstance(node, BoolOp):
-        result = _to_q(node.items[0])
+        use_and = (node.op == "and") != negated
+        result = _to_q(node.items[0], negated)
         for item in node.items[1:]:
-            result = (
-                (result & _to_q(item)) if node.op == "and" else (result | _to_q(item))
-            )
+            item_q = _to_q(item, negated)
+            result = (result & item_q) if use_and else (result | item_q)
         return result
     if isinstance(node, Not):
-        return ~_to_q(node.item)
-    return _check_q(node)
+        return _to_q(node.item, not negated)
+    return _check_q(node, negated)
 
 
 def _value_of(instance, check: _Check):
