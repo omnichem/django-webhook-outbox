@@ -6,6 +6,21 @@ uses [semantic versioning](https://semver.org/). Versions come from git tags.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-26
+
+Run `migrate webhook_outbox` after upgrading (the new migration only records
+the changed help text; the database schema does not change).
+
+### Changed
+
+- The *Filter* field help text of a tracked table (`TrackedTable.predicate`)
+  now ends with two example filters: `status in ("paid", "shipped")` and
+  `status = "paid" and customer.country is not null`. Migration
+  `0004_predicate_help_text_examples` records the new help text. Russian
+  translation updated.
+
+## [1.2.0] - 2026-11-26
+
 Run `migrate webhook_outbox` after upgrading; see
 [docs/upgrading.md](docs/upgrading.md#upgrading-from-11-to-12).
 
@@ -163,6 +178,8 @@ See [docs/upgrading.md](docs/upgrading.md#behaviour-differences). The known
 limitations of the original code are kept on purpose and documented in
 [docs/semantics.md](docs/semantics.md#known-limitations).
 
-[Unreleased]: https://github.com/omnichem/django-webhook-outbox/compare/1.1.0...HEAD
+[Unreleased]: https://github.com/omnichem/django-webhook-outbox/compare/1.2.1...HEAD
+[1.2.1]: https://github.com/omnichem/django-webhook-outbox/compare/1.2.0...1.2.1
+[1.2.0]: https://github.com/omnichem/django-webhook-outbox/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/omnichem/django-webhook-outbox/compare/1.0.0...1.1.0
 [1.0.0]: https://github.com/omnichem/django-webhook-outbox/releases/tag/1.0.0

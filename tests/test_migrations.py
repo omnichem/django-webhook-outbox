@@ -8,7 +8,8 @@ from django.db.migrations.loader import MigrationLoader
 
 MIGRATION_1_1 = ("webhook_outbox", "0002_1_1_event_fields")
 MIGRATION_1_2 = ("webhook_outbox", "0003_1_2_predicate")
-LATEST = MIGRATION_1_2
+MIGRATION_1_2_1 = ("webhook_outbox", "0004_predicate_help_text_examples")
+LATEST = MIGRATION_1_2_1
 
 
 @pytest.mark.django_db
@@ -23,7 +24,12 @@ def test_migrations():
     names = sorted(
         name for app, name in loader.disk_migrations if app == "webhook_outbox"
     )
-    assert names == ["0001_initial", "0002_1_1_event_fields", "0003_1_2_predicate"]
+    assert names == [
+        "0001_initial",
+        "0002_1_1_event_fields",
+        "0003_1_2_predicate",
+        "0004_predicate_help_text_examples",
+    ]
 
 
 def _database_operations(operations):

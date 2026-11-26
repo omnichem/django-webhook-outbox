@@ -107,7 +107,9 @@ class TrackedTable(TimeStampedModel):
             'status = "paid" and total >= 100. Operators: = != < <= > >= '
             "in (...), not in (...), is null, is not null, and, or, not, "
             "parentheses. Strings in quotes, numbers, true, false. "
-            'Foreign keys: company.country = "DE". Empty: every row.'
+            'Foreign keys: company.country = "DE". Empty: every row. '
+            'Examples: status in ("paid", "shipped"); '
+            'status = "paid" and customer.country is not null'
         ),
     )
 
