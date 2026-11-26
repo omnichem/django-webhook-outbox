@@ -711,3 +711,13 @@ def test_invalid_filter_warns_in_database_checks():
 def test_deny_fields_setting_is_validated(value):
     with override_settings(WEBHOOK_OUTBOX={"PREDICATE_DENY_FIELDS": value}):
         assert "webhook_outbox.E009" in ids(checks.run_checks())
+
+
+def test_help_text_examples_parse():
+    # The admin help text ends with "Examples: <filter>; <filter>"; keep them valid.
+    help_text = str(TrackedTable._meta.get_field("predicate").help_text)
+    _, _, tail = help_text.partition("Examples: ")
+    examples = tail.split("; ")
+    assert len(examples) == 2
+    for example in examples:
+        assert parse(example) is not None
